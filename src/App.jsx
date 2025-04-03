@@ -1,82 +1,76 @@
-import { useState } from "react";
-import { useAddress, useMetamask, useDisconnect } from "@thirdweb-dev/react";
-import Footer from "./components/Footer";
-import Home from "./Home";
+import React, { useState, useEffect, useCallback } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import PropertyInfo from "./pages/PropertyInfo";
-import Explore from "./pages/Explore.jsx";
-import UserProfile from "./pages/UserProfile.jsx";
-import Dashboard from "./pages/Dashboard";
-import Header from "./components/Header";
-import { SignedIn, SignedOut } from "@clerk/clerk-react";
-import SignInComponent from "./components/SignInComponent";
-import MakeOffer from "./components/MakeOffer.jsx";
-import Chatpage from "./pages/Chatpage.jsx";
-import Home2 from "./pages/Home2"
-function App() {
-    const address = useAddress();
-    const connectWithMetamask = useMetamask();
-    const disconnect = useDisconnect();
 
+// Core Components & Pages
+import Header from "./components/Header";
+import Footer from "./components/Footer";
+import Home from "./Home"; // Main view when connected
+import Home2 from "./pages/Home2"; // Landing/Connect view when disconnected
+import Explore from "./pages/Explore.jsx";
+import PropertyInfo from "./pages/PropertyInfo";
+import Dashboard from "./pages/Dashboard";
+import PropertyForm from "./pages/PropertyForm";
+import Editproperty from "./pages/Editproperty";
+// <-- IMPORT PurchasePage
+
+import ChatPage from "./pages/ChatPage.jsx";
+import MakeOffer from "./components/MakeOffer.jsx";
+import AboutPage from "./pages/AboutPage";
+
+// Context & Services
+import { useWallet } from './pages/WalletContext';
+import { supabase } from "./../supabase";
+
+function App() {
+    const { address, isConnected, connectWallet } = useWallet();
+    const [isMetaMaskInstalled, setIsMetaMaskInstalled] = useState(false);
+    const [notificationCount, setNotificationCount] = useState(0);
+
+    // ... (rest of your useEffects and logic remain the same) ...
+
+    // --- Render MetaMask Install Prompt ---
+    if (!isMetaMaskInstalled) {
+        // ... (MetaMask install prompt code remains the same) ...
+    }
+
+    // --- Render Main Application ---
     return (
         <Router>
-            <div>
-                <Header />
-                {address ? (
-                    <div>
-                        <p>Connected as {address}</p>
-                        <button onClick={disconnect}>Disconnect</button>
-                    </div>
-                ) : (
-                    <button onClick={connectWithMetamask}>Connect with MetaMask</button>
-                )}
+            <div className="flex flex-col min-h-screen">
+                <Header
+                    notificationCount={notificationCount}
+                    isConnected={!!address}
+                    connectWallet={connectWallet}
+                    walletAddress={address}
+                />
+                <main className="flex-grow">
+                    <Routes>
+                        {/* Conditional Home Route */}
+                        <Route
+                            path="/"
+                            element={address ? <Home /> : <Home2 connectWallet={connectWallet} />}
+                        />
 
-                <Routes>
-                    <Route path="/" element={<Home />} />
-                    <Route path="/signin" element={<SignInComponent />} />
+                        {/* Protected Routes */}
+                        <Route path="/explore" element={address ? <Explore /> : <Navigate to="/" replace />} />
+                        <Route path="/property/:id" element={address ? <PropertyInfo /> : <Navigate to="/" replace />} />
+                        <Route path="/dashboard" element={address ? <Dashboard /> : <Navigate to="/" replace />} />
+                        <Route path="/make-offer" element={address ? <MakeOffer /> : <Navigate to="/" replace />} />
+                        <Route path="/chat" element={address ? <ChatPage /> : <Navigate to="/" replace />} />
+                        <Route path="/propertyform" element={address ? <PropertyForm /> : <Navigate to="/" replace />} />
+                        <Route path="/edit-property/:productId" element={address ? <Editproperty /> : <Navigate to="/" replace />} />
 
-                    {/* Protected Routes - Clerk manages authentication */}
-                    <Route path="/explore" element={
-                        <SignedIn>
-                            <Explore />
-                        </SignedIn>
-                    } />
-                    <Route path="/property/:id" element={
-                        <SignedIn>
-                            <PropertyInfo />
-                        </SignedIn>
-                    } />
-                    <Route path="/dashboard" element={
-                        <SignedIn>
-                            <Dashboard />
-                        </SignedIn>
-                    } />
-                    <Route path="/profile" element={
-                        <SignedIn>
-                            <UserProfile />
-                        </SignedIn>
-                    } />
+                        {/* --- ADDED ROUTE FOR PURCHASE PAGE --- */}
+                        
+                        {/* ------------------------------------ */}
 
-                    {/* Fallback Route for SignedOut Users */}
-                    <Route path="*" element={
-                        <SignedOut>
-                            <Navigate to="/signin" replace />
-                        </SignedOut>
-                    } />
-                    <Route path="/make-offer" element={
-                        <SignedIn>
-                            <MakeOffer />
-                        </SignedIn>
-                    } />
-                    <Route path="/Chat" element={
-                        <SignedIn>
-                            <Chatpage />
-                        </SignedIn>
-                    } />
+                        {/* Public Routes */}
+                        <Route path="/about" element={<AboutPage />} />
 
-                    {/*For Testing Purpose*/}
-                    <Route path="/test" element={<Home2 />} />
-                </Routes>
+                        {/* Catch-all Route */}
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                    </Routes>
+                </main>
                 <Footer />
             </div>
         </Router>

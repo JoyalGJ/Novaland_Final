@@ -54,10 +54,10 @@ function Signupcustom() {
 
     if (data) {
       // User Exists → Login
-      console.log("User Found:", data);
+      console.log("User  Found:", data);
       localStorage.setItem("name", data.name);
       localStorage.setItem("email", data.email || "");
-      navigate("/explore"); // Redirect to dashboard
+      navigate("/"); // Redirect to home
     } else {
       // User Not Found → Show Signup Form
       setIsSignup(true);
@@ -84,7 +84,7 @@ function Signupcustom() {
     // Save to local storage & login
     localStorage.setItem("name", name);
     localStorage.setItem("email", email || "");
-    navigate("/explore");
+    navigate("/"); // Redirect to home
   };
 
   useEffect(() => {
