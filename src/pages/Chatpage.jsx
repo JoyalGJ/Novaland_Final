@@ -1,45 +1,47 @@
-import React, { useState, useEffect, useCallback, useRef } from "react"; // Added useRef
+import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { supabase } from "../../supabase";
 import moment from "moment";
-import contractABI from "../../contractABI2.json"; // Make sure this ABI matches Novaland_F2
+// --- IMPORTANT: Make sure contractABI.json contains the ABI for Novaland_F1 ---
+import contractABI from "../../contractABI2.json"; // Assuming you renamed/updated this file
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPaperPlane, faGift, faCheck, faTimes, faSpinner, faShoppingCart } from '@fortawesome/free-solid-svg-icons'; // Added faShoppingCart
+import { faPaperPlane, faGift, faCheck, faTimes, faSpinner } from '@fortawesome/free-solid-svg-icons'; // Added faSpinner
 
-// --- Use the correct contract address for Novaland_F2 ---
-const CONTRACT_ADDRESS = "0x5CfF31C181B3C5b038F8319d4Af79d2C43F11424"; // <--- UPDATE THIS
+// --- Use the correct contract address if it changed ---
+const CONTRACT_ADDRESS = "0x5CfF31C181B3C5b038F8319d4Af79d2C43F11424"; // Update if necessary
 
-// --- Updated fetchPropertyFromBlockchain to fetch and filter ---
-// Remains inefficient but necessary without FetchPropertyById in the contract.
-const fetchPropertyFromBlockchain = async (propertyId, provider) => {
+// --- Updated function to fetch property details based on Novaland_F1 structure ---
+// Note: Novaland_F1 doesn't have FetchProperty(id). This function now fetches ALL
+// properties and filters, which is inefficient for single lookups but necessary
+// without a dedicated contract function. Consider adding FetchPropertyById to your contract.
+const fetchPropertyFromBlockchain = async (propertyId, provider, contract) => {
     try {
-        console.log(`Attempting to fetch blockchain details for property ID: ${propertyId}`);
-        const contract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, provider);
+        console.log(`Attempting to fetch details for missing property ID: ${propertyId}`);
+        // Fetch all properties as the new contract lacks a single property fetch function
         const allProperties = await contract.FetchProperties();
-        const property = allProperties.find(p => Number(p.productID) === Number(propertyId)); // Ensure type consistency
+        const property = allProperties.find(p => Number(p.productID) === propertyId);
 
         if (!property) {
-            console.warn(`Property with ID ${propertyId} not found on blockchain via FetchProperties.`);
+            console.warn(`Property with ID ${propertyId} not found on blockchain.`);
             return null;
         }
 
-        console.log(`Found property ${propertyId} details via FetchProperties:`, property);
-        // Convert BigNumber price to number for easier use, ensure lowercase address
+        console.log(`Found property ${propertyId} via FetchProperties:`, property);
         return {
             productID: Number(property.productID),
-            owner: property.owner.toLowerCase(),
-            price: Number(ethers.utils.formatEther(property.price)), // Convert Wei to Ether number
+            owner: property.owner,
+            price: Number(property.price), // Original listing price
             propertyTitle: property.propertyTitle,
             category: property.category,
             images: property.images,
-            location: property.location,
-            documents: property.documents,
+            location: property.location, // Changed from propertyAddress
+            documents: property.documents, // Added documents
             description: property.description,
             nftId: property.nftId,
-            isListed: property.isListed
+            isListed: property.isListed // Added isListed
         };
     } catch (error) {
-        console.error(`Error fetching property ID ${propertyId} from blockchain:`, error);
+        console.error(`Error fetching property ID ${propertyId}:`, error);
         return null;
     }
 };
@@ -54,35 +56,24 @@ function ChatPage() {
     const [offerMessage, setOfferMessage] = useState("");
     const [connectedWallet, setConnectedWallet] = useState("");
     const [userNames, setUserNames] = useState({});
-    const [isOfferPendingInThread, setIsOfferPendingInThread] = useState(false);
+    const [isOfferPendingInThread, setIsOfferPendingInThread] = useState(false); // Renamed for clarity
     const [propertyNames, setPropertyNames] = useState({});
-    const [allPropertiesMap, setAllPropertiesMap] = useState({}); // Stores full property details (price in ETH)
+    const [allPropertiesMap, setAllPropertiesMap] = useState({}); // Stores full property details
     const [propertiesLoading, setPropertiesLoading] = useState(false);
     const [isOfferFormVisible, setIsOfferFormVisible] = useState(false);
     const [isBuyerView, setIsBuyerView] = useState(true);
     const [error, setError] = useState(null);
     const [unreadThreads, setUnreadThreads] = useState({});
-    const [isPurchasing, setIsPurchasing] = useState(false);
-    const [purchaseStatus, setPurchaseStatus] = useState(null); // 'pending', 'confirming', 'success', 'failed'
-    const [acceptedOfferId, setAcceptedOfferId] = useState(null); // Track which offer was accepted
-
-    const messagesEndRef = useRef(null); // Ref for scrolling
-
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
-
-    useEffect(() => {
-        scrollToBottom(); // Scroll whenever messages change
-    }, [messages]);
+    const [isPurchasing, setIsPurchasing] = useState(false); // Loading state for purchase
+    const [purchaseStatus, setPurchaseStatus] = useState(null); // e.g., 'pending', 'success', 'failed'
 
 
     function clearError() {
         setError(null);
-        setPurchaseStatus(null);
+        setPurchaseStatus(null); // Clear purchase status when clearing errors
     }
 
-    const connectWallet = useCallback(async () => {
+    const connectWallet = useCallback(async function connectWalletHandler() {
         clearError();
         if (window.ethereum) {
             try {
@@ -95,7 +86,7 @@ function ChatPage() {
             } catch (err) {
                 console.error("Error connecting wallet:", err);
                 setError("Failed to connect wallet. Please ensure MetaMask is unlocked and try again.");
-                setConnectedWallet("");
+                setConnectedWallet(""); // Ensure wallet state is cleared on error
             }
         } else {
             console.error("MetaMask not found.");
@@ -104,28 +95,30 @@ function ChatPage() {
         }
     }, []);
 
-    const fetchUserNames = useCallback(async (wallets) => {
-        const uniqueWallets = [...new Set(wallets)].filter(Boolean).map(w => w.toLowerCase()).filter(w => !userNames[w]);
+    const fetchUserNames = useCallback(async function fetchUserNamesHandler(wallets) {
+        const uniqueWallets = [...new Set(wallets)].filter(Boolean).filter(w => !userNames[w]);
         if (uniqueWallets.length === 0) return;
         try {
             const { data, error: fetchError } = await supabase.from("users").select("wallet_address, name").in("wallet_address", uniqueWallets);
-            if (fetchError) throw fetchError;
+            if (fetchError) {
+                console.error("Error fetching user names:", fetchError);
+                setError("Failed to fetch user details.");
+                return;
+            }
             const nameMap = data.reduce((acc, user) => {
                 acc[user.wallet_address.toLowerCase()] = user.name || `${user.wallet_address.substring(0, 6)}...${user.wallet_address.slice(-4)}`;
                 return acc;
             }, {});
             setUserNames(prev => ({ ...prev, ...nameMap }));
         } catch (err) {
-            console.error("Error fetching user names:", err);
-            // Don't set global error, maybe log or show subtle warning
+            console.error("Error in fetchUserNames:", err);
+            setError("An error occurred fetching user details.");
         }
     }, [userNames]);
 
-    // --- Updated fetchAllPropertiesFromContract ---
-    const fetchAllPropertiesFromContract = useCallback(async () => {
-        // Fetch only if needed and not already loading
+    // --- Updated fetchAllPropertiesFromContract for Novaland_F1 ---
+    const fetchAllPropertiesFromContract = useCallback(async function fetchAllPropertiesHandler() {
         if (propertiesLoading || Object.keys(allPropertiesMap).length > 0 || !window.ethereum) return;
-
         setPropertiesLoading(true);
         clearError();
         console.log("Fetching all properties from contract...");
@@ -135,48 +128,41 @@ function ChatPage() {
             const properties = await contract.FetchProperties();
             console.log("Raw properties fetched:", properties);
 
-            const propMap = {};
-            const walletsToFetch = new Set();
-
-            properties.forEach(prop => {
+            const propMap = properties.reduce((map, prop) => {
                  const propertyId = Number(prop.productID);
-                 if (propertyId !== undefined && !isNaN(propertyId) && prop.owner) {
-                    const ownerAddress = prop.owner.toLowerCase();
-                    propMap[propertyId] = {
+                 if (propertyId !== undefined && !isNaN(propertyId)) { // Ensure ID is a valid number
+                     map[propertyId] = {
                          productID: propertyId,
-                         owner: ownerAddress,
-                         price: Number(ethers.utils.formatEther(prop.price)), // Store price in ETH
+                         owner: prop.owner.toLowerCase(), // Store addresses lowercase
+                         price: Number(prop.price), // Original listing price
                          propertyTitle: prop.propertyTitle || "Unnamed Property",
                          category: prop.category,
                          images: prop.images,
-                         location: prop.location,
-                         documents: prop.documents,
+                         location: prop.location, // Use location array
+                         documents: prop.documents, // Add documents array
                          description: prop.description,
                          nftId: prop.nftId,
-                         isListed: prop.isListed
+                         isListed: prop.isListed // Add isListed status
                      };
-                     walletsToFetch.add(ownerAddress);
                  } else {
-                    console.warn("Skipping property with invalid ID or missing owner:", prop);
+                    console.warn("Skipping property with invalid ID:", prop);
                  }
-            });
-
+                 return map;
+            }, {});
             console.log("Processed properties map:", propMap);
             setAllPropertiesMap(propMap);
-            fetchUserNames(Array.from(walletsToFetch)); // Fetch names for owners
-
         } catch (err) {
             console.error("Error fetching properties from contract:", err);
-            setError("Failed to fetch property details from the blockchain. Property info may be incomplete or stale.");
+            setError("Failed to fetch property details from the blockchain. Property info may be incomplete.");
             setAllPropertiesMap({}); // Clear map on error
         } finally {
             setPropertiesLoading(false);
         }
-    }, [propertiesLoading, allPropertiesMap, fetchUserNames]);
+    }, [propertiesLoading, allPropertiesMap]); // Dependencies
 
-    const fetchThreads = useCallback(async () => {
+    const fetchThreads = useCallback(async function fetchThreadsHandler() {
         if (!connectedWallet) return;
-        clearError();
+        clearError(); // Clear previous errors
         try {
             console.log("Fetching threads for wallet:", connectedWallet);
             const { data, error: fetchError } = await supabase
@@ -185,45 +171,27 @@ function ChatPage() {
                 .or(`buyer_wallet.eq.${connectedWallet},seller_wallet.eq.${connectedWallet}`)
                 .order("created_at", { ascending: false });
 
-            if (fetchError) throw fetchError;
+            if (fetchError) {
+                console.error("Error fetching threads:", fetchError);
+                setError("Failed to load conversations.");
+                return;
+            }
 
             const fetchedThreads = data || [];
             console.log("Fetched threads:", fetchedThreads);
             setThreads(fetchedThreads);
 
             if (fetchedThreads.length > 0) {
-                const wallets = fetchedThreads.flatMap(t => [t.buyer_wallet, t.seller_wallet].filter(Boolean));
-                fetchUserNames(wallets);
-
-                // Check for unread messages across all fetched threads
-                const threadIds = fetchedThreads.map(t => t.id);
-                 const { data: unreadCounts, error: countError } = await supabase
-                    .rpc('count_unread_messages_per_thread', { user_wallet: connectedWallet, thread_ids: threadIds });
-
-                 if (countError) {
-                     console.error("Error fetching unread counts:", countError);
-                 } else {
-                     const unreadMap = (unreadCounts || []).reduce((acc, item) => {
-                         if (item.unread_count > 0) {
-                             acc[item.thread_id] = true;
-                         }
-                         return acc;
-                     }, {});
-                     setUnreadThreads(unreadMap);
-                     console.log("Unread threads map:", unreadMap);
-                 }
-            } else {
-                 setUnreadThreads({}); // No threads, no unreads
+                const wallets = fetchedThreads.flatMap(t => [t.buyer_wallet, t.seller_wallet]);
+                fetchUserNames(wallets); // Fetch names for involved parties
             }
         } catch (err) {
-            console.error("Error fetching threads:", err);
-            setError("Failed to load conversations.");
-            setThreads([]);
-             setUnreadThreads({});
+            console.error("Error in fetchThreads:", err);
+            setError("An unexpected error occurred loading conversations.");
         }
     }, [connectedWallet, fetchUserNames]); // Dependencies
 
-    const fetchMessages = useCallback(async (threadId) => {
+    const fetchMessages = useCallback(async function fetchMessagesHandler(threadId) {
         if (!threadId || !connectedWallet) return;
         try {
             console.log(`Fetching messages for thread ${threadId}`);
@@ -233,147 +201,175 @@ function ChatPage() {
                 .eq("thread_id", threadId)
                 .order("created_at", { ascending: true });
 
-            if (fetchError) throw fetchError;
+            if (fetchError) {
+                console.error("Error fetching messages:", fetchError);
+                setError("Failed to load messages.");
+                return;
+            }
 
             const sortedMessages = data ? [...data].sort((a, b) => new Date(a.created_at) - new Date(b.created_at)) : [];
             console.log(`Fetched ${sortedMessages.length} messages for thread ${threadId}`);
             setMessages(sortedMessages);
 
-            // Check for pending or accepted offer in this thread
-            let pending = false;
-            let acceptedId = null;
-            sortedMessages.forEach(msg => {
-                if (msg.type === "offer") {
-                     if (msg.status === "pending") {
-                         pending = true;
-                     } else if (msg.status === "accepted") {
-                         acceptedId = msg.id; // Store the ID of the accepted offer
-                     }
-                }
-            });
-            setIsOfferPendingInThread(pending);
-            setAcceptedOfferId(acceptedId); // Set the accepted offer ID for this thread
-            console.log(`Thread ${threadId} - Offer Pending: ${pending}, Accepted Offer ID: ${acceptedId}`);
-
+            // Check if there's any *pending* offer in this specific thread (sent by anyone)
+            const hasPendingOffer = sortedMessages.some(msg => msg.type === "offer" && msg.status === "pending");
+            setIsOfferPendingInThread(hasPendingOffer); // Update thread-specific offer pending status
+            console.log(`Is offer pending in thread ${threadId}?`, hasPendingOffer);
 
             if (data?.length > 0) {
-                 const wallets = data.map(msg => msg.sender_wallet).filter(Boolean);
+                 const wallets = data.map(msg => msg.sender_wallet);
                  fetchUserNames(wallets);
             }
         } catch (err) {
-            console.error("Error fetching messages:", err);
+            console.error("Error in fetchMessages:", err);
             setError("An error occurred loading messages.");
-            setMessages([]);
-            setIsOfferPendingInThread(false);
-            setAcceptedOfferId(null);
         }
     }, [connectedWallet, fetchUserNames]); // Dependencies
 
-    const markMessagesAsRead = useCallback(async (threadId) => {
+    const markMessagesAsRead = useCallback(async function markMessagesAsReadHandler(threadId) {
         if (!threadId || !connectedWallet) return;
-        // Optimistically remove from unread state
         setUnreadThreads(prev => {
-            if (!prev[threadId]) return prev; // No change needed if already not marked unread
             const newState = { ...prev };
             delete newState[threadId];
             return newState;
         });
         try {
-            // Update read status in DB
-            const { error: updateError } = await supabase
+            // Find messages in this thread not sent by the current user and not marked as read
+            const { data: unreadMessages, error: unreadError } = await supabase
                 .from("messages")
-                .update({ read: true })
+                .select('id')
                 .eq('thread_id', threadId)
                 .neq('sender_wallet', connectedWallet)
-                .is('read', null); // Only update those that are not already read
+                .is('read', null); // Check for null or false explicitly if needed
 
-            if (updateError) {
-                console.error(`Error marking messages as read for thread ${threadId}:`, updateError);
-                // Optionally re-add to unread state on failure? Or just log.
+            if (unreadError) {
+                console.error('Error fetching unread count:', unreadError);
+                return; // Don't proceed if fetching fails
+            }
+
+            if (unreadMessages && unreadMessages.length > 0) {
+                const messageIds = unreadMessages.map(msg => msg.id);
+                console.log(`Marking ${messageIds.length} messages as read in thread ${threadId}`);
+                const { error: updateError } = await supabase
+                    .from("messages")
+                    .update({ read: true })
+                    .in('id', messageIds);
+
+                if (updateError) {
+                    console.error('Error marking messages as read:', updateError);
+                    // Optionally set an error state here, but maybe not critical
+                }
             } else {
-                console.log(`Marked messages as read in thread ${threadId}`);
+                 console.log(`No unread messages to mark in thread ${threadId}`);
             }
         } catch (err) {
-            console.error('Unexpected error in markMessagesAsRead:', err);
+            console.error('Error in markMessagesAsRead:', err);
+            // Handle unexpected errors if necessary
         }
     }, [connectedWallet]); // Dependencies
 
-    const getThreadName = useCallback((thread) => {
+    const getThreadName = useCallback(function getThreadNameHandler(thread) {
         if (!thread || !connectedWallet) return "Unknown";
-        const otherWallet = (thread.buyer_wallet?.toLowerCase() === connectedWallet ? thread.seller_wallet : thread.buyer_wallet)?.toLowerCase();
-        return userNames[otherWallet] || `${otherWallet?.substring(0, 6)}...${otherWallet?.slice(-4)}` || "Unknown User";
+        const otherWallet = thread.buyer_wallet === connectedWallet ? thread.seller_wallet : thread.buyer_wallet;
+        return userNames[otherWallet?.toLowerCase()] || `${otherWallet?.substring(0, 6)}...${otherWallet?.slice(-4)}`;
     }, [connectedWallet, userNames]);
 
-    const isThreadUnread = useCallback((thread) => !!unreadThreads[thread.id], [unreadThreads]);
+    const isThreadUnread = useCallback(function isThreadUnreadHandler(thread) {
+        return !!unreadThreads[thread.id];
+    }, [unreadThreads]);
 
-    const determineThreadStyle = useCallback((thread) => {
+    const determineThreadStyle = useCallback(function determineThreadStyleHandler(thread) {
         if (activeThread?.id === thread.id) {
-            return 'bg-blue-100 ring-2 ring-blue-300';
+            return 'bg-blue-100 ring-2 ring-blue-300'; // Highlight active thread more clearly
         } else if (thread.status === "closed") {
-            return 'bg-gray-100 text-gray-500 hover:bg-gray-200 opacity-75';
+            return 'bg-gray-100 text-gray-500 hover:bg-gray-200 opacity-75'; // Style closed threads
         } else {
             return 'hover:bg-gray-100';
         }
     }, [activeThread]);
 
-    const getFilteredThreads = useCallback(() => {
+    const getFilteredThreads = useCallback(function getFilteredThreadsHandler() {
         return threads.filter(thread => {
             const walletToCheck = isBuyerView ? thread.buyer_wallet : thread.seller_wallet;
+            // Ensure comparison is case-insensitive
             return walletToCheck?.toLowerCase() === connectedWallet?.toLowerCase();
         });
     }, [threads, isBuyerView, connectedWallet]);
 
     // --- Effects ---
 
-    // Initial connect and listener setup
     useEffect(() => {
+        console.log("Component mounted, attempting wallet connection...");
         connectWallet();
+
+        // Listener for account changes
         const handleAccountsChanged = (accounts) => {
             console.log("Wallet account changed:", accounts);
             if (accounts.length === 0) {
-                setConnectedWallet("");
-                setThreads([]); setActiveThread(null); setMessages([]); setUserNames({});
-                setPropertyNames({}); setAllPropertiesMap({}); setPropertiesLoading(false);
-                setUnreadThreads({}); setError("Wallet disconnected."); setIsBuyerView(true);
+                console.log("Wallet disconnected.");
+                setConnectedWallet(""); // Clear wallet state if disconnected
+                // Reset application state that depends on the wallet
+                setThreads([]);
+                setActiveThread(null);
+                setMessages([]);
+                setUserNames({});
+                setPropertyNames({});
+                setAllPropertiesMap({});
+                setPropertiesLoading(false);
+                setUnreadThreads({});
+                setError("Wallet disconnected. Please connect again.");
+                setIsBuyerView(true);
             } else {
-                // Reconnect or update if address changed
-                if (accounts[0].toLowerCase() !== connectedWallet) {
-                    connectWallet(); // This will reset state via the connectedWallet effect
-                }
+                connectWallet(); // Re-connect or update wallet address
             }
         };
+
         if (window.ethereum) {
             window.ethereum.on('accountsChanged', handleAccountsChanged);
         }
+
+        // Cleanup listener on component unmount
         return () => {
-            if (window.ethereum?.removeListener) {
+            if (window.ethereum?.removeListener) { // Check if removeListener exists
                 window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
             }
         };
-    }, [connectWallet, connectedWallet]); // Added connectedWallet dependency here
+    }, [connectWallet]); // connectWallet is stable due to useCallback
 
-    // Fetch data when wallet connects or view changes
-     useEffect(() => {
+    useEffect(() => {
         if (connectedWallet) {
-            console.log("Connected wallet detected, fetching initial data.");
-            fetchAllPropertiesFromContract(); // Fetch properties if map is empty
-            fetchThreads(); // Fetch threads for the current view/wallet
+            console.log("Connected wallet detected, fetching properties and threads.");
+            // Fetch properties only if the map is empty
+            if(Object.keys(allPropertiesMap).length === 0) {
+                fetchAllPropertiesFromContract();
+            }
+            fetchThreads();
         } else {
-            // Clear state if wallet disconnects
-            setThreads([]); setActiveThread(null); setMessages([]); setUserNames({});
-            setPropertyNames({}); /* Keep properties map? */ setPropertiesLoading(false);
-            setUnreadThreads({}); setIsBuyerView(true);
+            console.log("No connected wallet, clearing state.");
+            // Clear state if wallet disconnects or isn't connected initially
+            setThreads([]);
+            setActiveThread(null);
+            setMessages([]);
+            setUserNames({});
+            setPropertyNames({});
+            // Do not clear allPropertiesMap here, maybe keep it cached? Or clear if desired.
+            // setAllPropertiesMap({});
+            setPropertiesLoading(false);
+            setUnreadThreads({});
+            // setError(null); // Keep potential connection errors visible
+            setIsBuyerView(true);
         }
-        // Rerun when connectedWallet changes
-    }, [connectedWallet, fetchAllPropertiesFromContract, fetchThreads]);
+    }, [connectedWallet, fetchThreads, fetchAllPropertiesFromContract, allPropertiesMap]); // Added allPropertiesMap dependency
 
-    // Map property names when threads or properties load/change
+    // Effect to map property titles to threads
     useEffect(() => {
         const mapIsReady = Object.keys(allPropertiesMap).length > 0;
-        if (threads.length > 0 && (mapIsReady || !propertiesLoading)) {
+        const shouldUpdatePropertyNames = threads.length > 0 && (mapIsReady || !propertiesLoading);
+
+        if (shouldUpdatePropertyNames) {
             console.log("Updating property names for threads...");
             const newPropertyNames = {};
-            const missingPropertyIds = new Set();
+            const missingPropertyIds = [];
 
             threads.forEach(thread => {
                 const propertyId = thread.property_id;
@@ -382,54 +378,63 @@ function ChatPage() {
                     if (propertyDetails) {
                         newPropertyNames[thread.id] = propertyDetails.propertyTitle || "Unnamed Property";
                     } else if (!propertiesLoading) {
-                        newPropertyNames[thread.id] = "Unknown Property (Re-fetching...)";
-                        missingPropertyIds.add(propertyId);
+                        // Property ID exists but details are not in the map, and not currently loading
+                        newPropertyNames[thread.id] = "Unknown Property (Fetch Pending)";
+                        if (!missingPropertyIds.includes(propertyId)) {
+                             missingPropertyIds.push(propertyId);
+                        }
                     } else {
-                        newPropertyNames[thread.id] = "Loading Property Info...";
+                        // Properties are loading, or ID is invalid/missing
+                        newPropertyNames[thread.id] = propertiesLoading ? "Loading Property Info..." : "Property Info Unavailable";
                     }
                 } else {
                     newPropertyNames[thread.id] = "Property ID Missing";
                 }
             });
 
-            // Only update state if needed
+            // Only update state if the names actually changed
             if (JSON.stringify(newPropertyNames) !== JSON.stringify(propertyNames)) {
                 setPropertyNames(newPropertyNames);
             }
 
-            // Attempt to fetch details for missing properties individually
-            if (missingPropertyIds.size > 0 && window.ethereum && !propertiesLoading) {
-                 console.log("Found missing property IDs, attempting individual fetch:", [...missingPropertyIds]);
+            // Attempt to fetch details for properties missing from the initial map
+            const uniqueMissingIds = [...new Set(missingPropertyIds)];
+            if (uniqueMissingIds.length > 0 && window.ethereum && !propertiesLoading) {
+                 console.log("Found missing property IDs, attempting individual fetch:", uniqueMissingIds);
                  (async () => {
                     try {
                         const provider = new ethers.providers.Web3Provider(window.ethereum);
+                        const contract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, provider);
                         const fetchedProperties = {};
-                        let fetchedCount = 0;
 
-                        for (const id of missingPropertyIds) {
-                            // Avoid re-fetching if already in map (async race condition)
-                            if(!allPropertiesMap[id]) {
-                                const propertyData = await fetchPropertyFromBlockchain(id, provider);
-                                if (propertyData) {
-                                    fetchedProperties[id] = propertyData;
-                                    fetchedCount++;
-                                }
+                        // This part is inefficient due to contract limitations
+                        // Consider batching or adding FetchPropertyById to the contract
+                        for (const id of uniqueMissingIds) {
+                            const propertyData = await fetchPropertyFromBlockchain(id, provider, contract);
+                            if (propertyData) {
+                                fetchedProperties[id] = propertyData;
+                                console.log(`Successfully fetched missing property ${id}`);
+                            } else {
+                                console.warn(`Failed to fetch missing property ${id}`);
                             }
                         }
 
-                        if (fetchedCount > 0) {
-                            console.log(`Adding ${fetchedCount} fetched missing properties to map.`);
-                            setAllPropertiesMap(prev => ({ ...prev, ...fetchedProperties }));
-                            // Property names will update automatically in the next render cycle due to map change
+                        if (Object.keys(fetchedProperties).length > 0) {
+                            console.log("Adding fetched missing properties to map:", fetchedProperties);
+                            setAllPropertiesMap(prev => ({
+                                ...prev,
+                                ...fetchedProperties
+                            }));
+                            // Trigger a re-run of this effect to update names immediately
                         }
                     } catch (fetchError) {
                         console.error("Error fetching missing property details:", fetchError);
-                        // Maybe show a subtle error that some property info couldn't be loaded
+                        // Avoid setting a general error, maybe log it or show a specific warning
                     }
                  })();
             }
         } else if (threads.length > 0 && propertiesLoading) {
-             // Show loading state for property names while properties are loading
+             // If loading, ensure threads show loading state for property names
              setPropertyNames(prev => {
                  const updatedNames = { ...prev };
                  let changed = false;
@@ -443,472 +448,435 @@ function ChatPage() {
              });
         }
 
-    }, [threads, allPropertiesMap, propertiesLoading, propertyNames]); // Removed fetchPropertyFromBlockchain from deps
+    }, [threads, allPropertiesMap, propertiesLoading, propertyNames]); // Dependencies
 
 
-    // Fetch messages for active thread
+    // Effect for active thread: fetch messages and mark as read
     useEffect(() => {
         if (activeThread) {
+            console.log(`Active thread changed to ${activeThread.id}, fetching messages and marking read.`);
             fetchMessages(activeThread.id);
             markMessagesAsRead(activeThread.id);
-            setIsOfferFormVisible(false); // Hide offer form
-            setPurchaseStatus(null); // Clear purchase status
-            setError(null); // Clear errors
+            setIsOfferFormVisible(false); // Hide offer form when switching threads
+            setPurchaseStatus(null); // Clear any purchase status message
         } else {
-            setMessages([]); // Clear messages when no thread is active
-            setAcceptedOfferId(null); // Clear accepted offer ID
-             setIsOfferPendingInThread(false); // Clear pending offer status
+            console.log("No active thread, clearing messages.");
+            setMessages([]);
         }
     }, [activeThread, fetchMessages, markMessagesAsRead]); // Dependencies
 
-    // Supabase Realtime Subscriptions
-     useEffect(() => {
-        if (!connectedWallet) return () => {}; // No subscription if not connected
+
+    // Effect for Supabase real-time subscriptions
+    useEffect(() => {
+        if (!connectedWallet) return () => {}; // No subscription if wallet not connected
 
         console.log("Setting up Supabase subscriptions for wallet:", connectedWallet);
-        const myWalletLower = connectedWallet.toLowerCase();
 
-        // Function to handle incoming message payload
-        const handleIncomingMessage = (payload) => {
-             console.log("Realtime: Message change detected", payload);
-             const msg = payload.new || (payload.eventType === 'DELETE' ? payload.old : null);
-             if (!msg) return;
-
-             const isInsert = payload.eventType === 'INSERT';
-             const isUpdate = payload.eventType === 'UPDATE';
-
-             // Ignore own sent messages for inserts (already handled optimistically potentially)
-             // But process own updates (e.g., offer status change initiated elsewhere)
-             if (isInsert && msg.sender_wallet?.toLowerCase() === myWalletLower) {
-                 console.log("Realtime: Ignoring own inserted message.");
-                 return;
-             }
-
-             // Check if message relates to the active thread
-             if (activeThread && msg.thread_id === activeThread.id) {
-                 console.log("Realtime: Change in active thread, refetching messages & marking read.");
-                 fetchMessages(activeThread.id);
-                 markMessagesAsRead(activeThread.id); // Mark as read immediately if it's for the active thread
-             } else {
-                  // Message is for an inactive thread
-                 // Mark thread as unread only if it's a new message from someone else
-                 if (isInsert && msg.sender_wallet?.toLowerCase() !== myWalletLower) {
-                     console.log(`Realtime: New message in inactive thread ${msg.thread_id}, marking unread.`);
-                     setUnreadThreads(prev => ({ ...prev, [msg.thread_id]: true }));
-                      // Optionally refetch threads list immediately if needed for sidebar update
-                     // fetchThreads();
-                 } else if (isUpdate) {
-                     // If an offer status changed in an inactive thread, might need to refetch threads
-                     // if thread status depends on it (e.g., showing 'Offer Accepted')
-                     if (msg.type === 'offer' && (msg.status === 'accepted' || msg.status === 'rejected')) {
-                         console.log("Realtime: Offer status changed in inactive thread, refetching threads list.");
-                         fetchThreads();
-                     }
+        // Channel for thread changes relevant to the user
+        const threadsChannel = supabase.channel(`public:threads:user=${connectedWallet}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: "threads" }, (payload) => {
+                 console.log("Realtime: Thread change detected", payload);
+                 const changedThread = payload.new || payload.old;
+                 // Check if the change involves the current user
+                 if (changedThread && (changedThread.buyer_wallet?.toLowerCase() === connectedWallet || changedThread.seller_wallet?.toLowerCase() === connectedWallet)) {
+                     console.log("Realtime: Relevant thread change, refetching threads.");
+                     fetchThreads(); // Refetch thread list
                  }
-             }
-
-              // If an offer was accepted or rejected (anywhere), refetch threads as thread status might change
-             if (msg.type === 'offer' && (msg.status === 'accepted' || msg.status === 'rejected')) {
-                 // Use timeout to avoid potential race condition with message fetch for active thread
-                 setTimeout(fetchThreads, 100);
-             }
-        };
-
-        // Subscribe to messages channel
-        const messagesSubscription = supabase.channel(`public:messages`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, handleIncomingMessage)
-            .subscribe((status, err) => {
-                if (status === 'SUBSCRIBED') console.log('Realtime: Subscribed to messages channel');
-                else console.error("Realtime: Error subscribing to messages:", err || status);
+             }).subscribe((status, err) => {
+                 if (status === 'SUBSCRIBED') {
+                    console.log('Realtime: Subscribed to threads channel');
+                 } else {
+                    console.error("Realtime: Error subscribing to threads:", err || status);
+                    setError("Connection issue: Real-time conversation updates may be delayed.");
+                 }
             });
 
+        // Channel for new messages or message updates
+        const messagesChannel = supabase.channel('public:messages')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: "messages" }, (payload) => {
+                console.log("Realtime: New message inserted", payload);
+                const newMessage = payload.new;
+                // Ignore messages sent by the current user in real-time handler (they appear instantly via UI state)
+                if (newMessage.sender_wallet?.toLowerCase() === connectedWallet) return;
 
-         // Subscribe to threads channel (for changes involving the user)
-         const threadsSubscription = supabase.channel(`public:threads:user=${myWalletLower}`)
-            .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: 'threads',
-                filter: `buyer_wallet=eq.${myWalletLower}` // Filter for buyer
-              }, (payload) => {
-                 console.log("Realtime: Thread change detected (user as buyer)", payload);
-                 fetchThreads(); // Refetch thread list
-             })
-             .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: 'threads',
-                filter: `seller_wallet=eq.${myWalletLower}` // Filter for seller
-              }, (payload) => {
-                 console.log("Realtime: Thread change detected (user as seller)", payload);
-                 fetchThreads(); // Refetch thread list
-             })
-            .subscribe((status, err) => {
-                if (status === 'SUBSCRIBED') console.log('Realtime: Subscribed to relevant threads channel');
-                else console.error("Realtime: Error subscribing to threads:", err || status);
-            });
+                // Check if the message belongs to the currently active thread
+                if (activeThread && newMessage.thread_id === activeThread.id) {
+                    console.log("Realtime: New message in active thread, fetching messages and marking read.");
+                    fetchMessages(activeThread.id); // Refetch messages for the active chat
+                    markMessagesAsRead(activeThread.id); // Mark as read immediately
+                } else {
+                    // Message is for a different thread, mark that thread as unread and refetch threads list
+                    console.log(`Realtime: New message in inactive thread ${newMessage.thread_id}, marking unread and refetching threads.`);
+                    setUnreadThreads(prev => ({ ...prev, [newMessage.thread_id]: true }));
+                    fetchThreads(); // Refetch threads to update sidebar potentially (e.g., last message preview if implemented)
+                }
+            })
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: "messages" }, (payload) => {
+                 console.log("Realtime: Message update detected", payload);
+                 const updatedMessage = payload.new;
+                 // If the update is in the active thread, refetch messages (e.g., offer status change)
+                 if (activeThread && updatedMessage.thread_id === activeThread.id) {
+                      console.log("Realtime: Message update in active thread, refetching messages.");
+                      fetchMessages(activeThread.id);
+                 }
+                 // Also refetch threads list if an offer is accepted/rejected, as thread status might change
+                 if (updatedMessage.type === 'offer' && (updatedMessage.status === 'accepted' || updatedMessage.status === 'rejected')) {
+                     console.log("Realtime: Offer status changed, refetching threads list.");
+                     fetchThreads();
+                 }
+             }).subscribe((status, err) => {
+                 if (status === 'SUBSCRIBED') {
+                    console.log('Realtime: Subscribed to messages channel');
+                 } else {
+                    console.error("Realtime: Error subscribing to messages:", err || status);
+                    setError("Connection issue: Real-time message updates may be delayed.");
+                 }
+             });
 
+        // Cleanup function to remove channels on component unmount or wallet change
         return () => {
             console.log("Cleaning up Supabase subscriptions.");
-            supabase.removeChannel(messagesSubscription);
-            supabase.removeChannel(threadsSubscription);
+            supabase.removeChannel(threadsChannel);
+            supabase.removeChannel(messagesChannel);
         };
     }, [connectedWallet, activeThread, fetchMessages, fetchThreads, markMessagesAsRead]); // Dependencies
 
+
     // --- Event Handlers ---
 
-    const handleSendMessage = useCallback(async () => {
-        if (!newMessage.trim() || !activeThread || activeThread.status === "closed" || !connectedWallet || isPurchasing) return;
+    const handleSendMessage = useCallback(async function handleSendMessageHandler() {
+        if (!newMessage.trim() || !activeThread || activeThread.status === "closed" || !connectedWallet) {
+            console.warn("Send message aborted. Conditions not met:", { newMessage: !!newMessage.trim(), activeThread, status: activeThread?.status, connectedWallet });
+            return;
+        }
         clearError();
         const tempMessage = newMessage;
-        setNewMessage(""); // Optimistic UI
+        setNewMessage(""); // Optimistic UI update
 
         try {
-            const { data, error: insertError } = await supabase.from("messages").insert({
+            console.log(`Sending message to thread ${activeThread.id}: "${tempMessage}"`);
+            const { error: insertError } = await supabase.from("messages").insert({
                 thread_id: activeThread.id,
                 sender_wallet: connectedWallet,
                 message: tempMessage,
                 type: "message",
-                read: null
-            }).select(); // Select to get the inserted row
+                read: null // Mark as unread initially for the recipient
+            });
 
-            if (insertError) throw insertError;
-
-            // Manually add message to state for instant feedback (alternative to relying solely on subscription)
-             if (data && data[0]) {
-                 setMessages(prev => [...prev, data[0]]);
-                 scrollToBottom(); // Scroll after adding message
-             } else {
-                 // Fallback if select fails or returns nothing unexpected
-                  fetchMessages(activeThread.id); // Refetch as a fallback
-             }
-
+            if (insertError) {
+                console.error("Error sending message:", insertError);
+                setError("Failed to send message. Please try again.");
+                setNewMessage(tempMessage); // Revert optimistic update
+            } else {
+                console.log("Message sent successfully.");
+                // No need to manually fetch messages, real-time listener will handle it if active,
+                // or it will be fetched when the thread becomes active.
+                 // Manually add to local state for immediate feedback if not relying solely on subscriptions
+                 // setMessages(prev => [...prev, { /* construct local message object */ }]);
+            }
         } catch (err) {
-            console.error("Error sending message:", err);
-            setError("Failed to send message.");
-            setNewMessage(tempMessage); // Revert
+            console.error("Unexpected error sending message:", err);
+            setError("An unexpected error occurred while sending the message.");
+            setNewMessage(tempMessage); // Revert optimistic update
         }
-    }, [newMessage, activeThread, connectedWallet, isPurchasing, fetchMessages]); // Added fetchMessages dependency
+    }, [newMessage, activeThread, connectedWallet]);
 
-    const handleMakeOffer = useCallback(async () => {
+    const handleMakeOffer = useCallback(async function handleMakeOfferHandler() {
+        // Additional check: Only buyer can make offer
         if (activeThread?.buyer_wallet?.toLowerCase() !== connectedWallet?.toLowerCase()) {
-             setError("Only the buyer can make an offer."); return;
-        }
-        if (!offerPrice || !activeThread || activeThread.status === "closed" || isOfferPendingInThread || !connectedWallet || isPurchasing) {
-             if (isOfferPendingInThread) setError("An offer is already pending.");
-             else setError("Cannot make offer. Ensure price is valid and conversation is active/not closed.");
+             setError("Only the buyer can make an offer in this conversation.");
              return;
+        }
+         // Check if an offer is already pending in this specific thread
+        if (!offerPrice || !activeThread || activeThread.status === "closed" || isOfferPendingInThread || !connectedWallet) {
+            if (isOfferPendingInThread) setError("An offer is already pending in this conversation. Wait for it to be resolved.");
+            else if (activeThread?.status === "closed") setError("Cannot make offer in a closed conversation.");
+            else setError("Cannot make offer. Ensure price is valid and conversation is active.");
+            console.warn("Make offer aborted. Conditions not met:", { offerPrice: !!offerPrice, activeThread, status: activeThread?.status, isOfferPendingInThread, connectedWallet });
+            return;
         }
 
         clearError();
         const price = parseFloat(offerPrice);
         if (isNaN(price) || price <= 0) {
-            setError("Please enter a valid positive offer price."); return;
+            setError("Please enter a valid positive offer price.");
+            return;
         }
 
         const tempOfferPrice = offerPrice;
         const tempOfferMessage = offerMessage;
-        setIsOfferFormVisible(false); // Optimistic hide
-        setOfferPrice(""); setOfferMessage("");
+
+        // Hide form immediately (optimistic)
+        setIsOfferFormVisible(false);
+        setOfferPrice("");
+        setOfferMessage("");
 
         try {
-            const { data, error: insertError } = await supabase.from("messages").insert({
+            console.log(`Making offer of ${price} ETH in thread ${activeThread.id}`);
+            const { error: insertError } = await supabase.from("messages").insert({
                 thread_id: activeThread.id,
                 sender_wallet: connectedWallet,
-                message: tempOfferMessage,
+                message: tempOfferMessage, // Optional message
                 price: price,
                 type: "offer",
                 status: "pending",
-                read: null
-            }).select();
+                read: null // Mark as unread for recipient
+            });
 
-            if (insertError) throw insertError;
+            if (insertError) {
+                console.error("Error making offer:", insertError);
+                setError("Failed to submit offer. Please try again.");
+                // Re-show form and restore values on failure
+                setIsOfferFormVisible(true);
+                setOfferPrice(tempOfferPrice);
+                setOfferMessage(tempOfferMessage);
+                return; // Stop execution
+            }
 
-            setIsOfferPendingInThread(true); // Set pending status
-             // Manually add message to state
-             if (data && data[0]) {
-                 setMessages(prev => [...prev, data[0]]);
-                 scrollToBottom();
-             } else {
-                  fetchMessages(activeThread.id); // Fallback refetch
-             }
+            console.log("Offer submitted successfully.");
+            setIsOfferPendingInThread(true); // Set pending status for this thread
+            // Real-time listener should update the message list
+
         } catch (err) {
-            console.error("Error making offer:", err);
-            setError("Failed to submit offer.");
-            setIsOfferFormVisible(true); // Re-show form on failure
-            setOfferPrice(tempOfferPrice); setOfferMessage(tempOfferMessage);
+            console.error("Unexpected error making offer:", err);
+            setError("An unexpected error occurred while submitting the offer.");
+            // Re-show form and restore values on failure
+            setIsOfferFormVisible(true);
+            setOfferPrice(tempOfferPrice);
+            setOfferMessage(tempOfferMessage);
         }
-    }, [offerPrice, offerMessage, activeThread, isOfferPendingInThread, connectedWallet, isPurchasing, fetchMessages]); // Added fetchMessages
+    }, [offerPrice, offerMessage, activeThread, isOfferPendingInThread, connectedWallet]); // Dependencies
 
-    // --- SELLER accepts offer (updates DB only) ---
-    const handleAcceptOffer = useCallback(async (offerMessageToAccept) => {
-         if (!activeThread || activeThread.status === "closed" || !connectedWallet || isPurchasing) return;
+
+    // --- Updated handleAcceptOffer with Purchase Logic ---
+    const handleAcceptOffer = useCallback(async function handleAcceptOfferHandler(offerMessage) {
+        if (!activeThread || activeThread.status === "closed" || !connectedWallet || isPurchasing) {
+            console.warn("Accept offer aborted. Conditions not met:", { activeThread, status: activeThread?.status, connectedWallet, isPurchasing });
+            return;
+        }
+        // Ensure the current user is the SELLER to accept
         if (activeThread.seller_wallet?.toLowerCase() !== connectedWallet?.toLowerCase()) {
-            setError("Only the seller can accept offers."); return;
+            setError("Only the seller can accept or reject offers.");
+            return;
         }
-        if (offerMessageToAccept.sender_wallet?.toLowerCase() === connectedWallet?.toLowerCase()) {
-             setError("You cannot accept your own offer."); return;
+        // Ensure the offer being accepted was NOT sent by the current user (seller)
+        if (offerMessage.sender_wallet?.toLowerCase() === connectedWallet?.toLowerCase()) {
+            setError("You cannot accept your own offer.");
+            return;
         }
-        if (offerMessageToAccept.status !== 'pending') {
-             setError("This offer is not pending."); return;
-        }
-
+    
         clearError();
-        console.log(`Seller accepting offer ${offerMessageToAccept.id} in thread ${activeThread.id} (Database Update Only)`);
-
-        try {
-            // Update the message status to "accepted"
-            const { error: updateMsgError } = await supabase
-                .from("messages")
-                .update({ status: "accepted" })
-                .eq("id", offerMessageToAccept.id);
-
-            if (updateMsgError) throw updateMsgError;
-
-            console.log("Offer status updated to 'accepted' in database.");
-            // Realtime listener should handle UI updates for both buyer and seller.
-            // Explicitly fetch messages here to ensure the accepted status and buyer's button appear.
-            fetchMessages(activeThread.id);
-            setIsOfferPendingInThread(false); // No longer pending
-            setAcceptedOfferId(offerMessageToAccept.id); // Set accepted ID
-
-             // Maybe update thread status to 'offer_accepted'? Optional.
-            /*
-            const { error: updateThreadError } = await supabase
-                .from("threads")
-                .update({ status: "offer_accepted" }) // Custom status
-                .eq("id", activeThread.id);
-            if (updateThreadError) console.warn("Could not update thread status to offer_accepted");
-            */
-
-        } catch (err) {
-            console.error("Error accepting offer (database update):", err);
-            setError("Failed to update offer status in database. Please try again.");
-        }
-        // NO blockchain interaction here
-    }, [activeThread, connectedWallet, isPurchasing, fetchMessages]); // Added fetchMessages
-
-    const handleRejectOffer = useCallback(async (offerId) => {
-        if (!activeThread || activeThread.status === "closed" || !connectedWallet || isPurchasing) return;
-         if (activeThread.seller_wallet?.toLowerCase() !== connectedWallet?.toLowerCase()) {
-            setError("Only the seller can reject offers."); return;
-        }
-
-        clearError();
-        try {
-            const { error: updateError } = await supabase
-                .from("messages")
-                .update({ status: "rejected" })
-                .eq("id", offerId)
-                .eq("status", "pending"); // Ensure we only reject pending offers
-
-            if (updateError) throw updateError;
-
-            console.log("Offer rejected successfully in database.");
-            fetchMessages(activeThread.id); // Refetch to show rejected status
-            setIsOfferPendingInThread(false); // No longer pending (if it was this offer)
-
-        } catch (err) {
-            console.error("Error rejecting offer:", err);
-            setError("Failed to reject offer.");
-        }
-    }, [activeThread, connectedWallet, fetchMessages, isPurchasing]);
-
-    // --- BUYER proceeds to purchase (calls Blockchain) ---
-    const handleProceedToPurchase = useCallback(async () => {
-        if (!activeThread || activeThread.status === "closed" || !connectedWallet || isPurchasing || !acceptedOfferId) {
-             console.warn("Proceed to purchase aborted. Conditions not met:", { activeThread, connectedWallet, isPurchasing, acceptedOfferId });
-             setError("Cannot proceed with purchase. Ensure an offer is accepted and the conversation is active.");
-             return;
-         }
-         // Ensure the current user is the BUYER
-         if (activeThread.buyer_wallet?.toLowerCase() !== connectedWallet?.toLowerCase()) {
-             setError("Only the buyer can initiate the purchase after an offer is accepted.");
-             return;
-         }
-
-        clearError();
-        setIsPurchasing(true);
+        setIsPurchasing(true); // Set loading state
         setPurchaseStatus('pending');
-        const propertyIdToPurchase = activeThread.property_id;
-
-        console.log(`Buyer proceeding to purchase property ${propertyIdToPurchase}. Accepted Offer ID: ${acceptedOfferId}`);
-
+        console.log(`Attempting to accept offer ${offerMessage.id} and purchase property ${activeThread.property_id} for ${offerMessage.price} ETH`);
+    
         if (!window.ethereum) {
-            setError("MetaMask is not available."); setIsPurchasing(false); setPurchaseStatus('failed'); return;
+            setError("MetaMask is not available. Please install or enable it.");
+            setIsPurchasing(false);
+            setPurchaseStatus('failed');
+            return;
         }
-
+    
         try {
-            // --- Step 1: Get Property Details (Especially Original Price and Status) ---
-             let propertyDetails = allPropertiesMap[propertyIdToPurchase];
-             if (!propertyDetails) {
-                 console.log("Property details not in map, fetching from blockchain...");
-                 setPurchaseStatus('Fetching latest property data...');
-                 const provider = new ethers.providers.Web3Provider(window.ethereum);
-                 propertyDetails = await fetchPropertyFromBlockchain(propertyIdToPurchase, provider);
-
-                 if (propertyDetails) {
-                      // Cache the fetched details
-                     setAllPropertiesMap(prev => ({...prev, [propertyIdToPurchase]: propertyDetails}));
-                 } else {
-                     throw new Error("Failed to fetch property details from blockchain. Cannot proceed.");
-                 }
-             }
-
-             // --- Step 2: Validate Conditions ---
-             setPurchaseStatus('Validating purchase conditions...');
-             if (!propertyDetails.isListed) {
-                 throw new Error("Property is no longer listed for sale.");
-             }
-             if (propertyDetails.owner?.toLowerCase() !== activeThread.seller_wallet?.toLowerCase()) {
-                 console.warn("Potential owner mismatch:", {cachedOwner: propertyDetails.owner, threadSeller: activeThread.seller_wallet});
-                 throw new Error("Property owner may have changed. Cannot proceed.");
-             }
-             // Price MUST match the contract's listing price
-             const requiredPriceETH = propertyDetails.price; // Price is already in ETH from map/fetch
-             if (requiredPriceETH <= 0) {
-                 throw new Error("Invalid property price found.");
-             }
-             const purchasePriceWei = ethers.utils.parseEther(requiredPriceETH.toString());
-             console.log(`Contract requires ${requiredPriceETH} ETH ( ${purchasePriceWei.toString()} Wei )`);
-
-            // --- Step 3: Blockchain Transaction (PurchaseProperty) ---
+            // --- Step 1: Blockchain Transaction (PurchaseProperty) ---
             const provider = new ethers.providers.Web3Provider(window.ethereum);
             const signer = provider.getSigner();
             const contract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, signer);
-            const buyerAddress = connectedWallet; // Buyer calls, passes their own address
-
-            console.log(`Calling PurchaseProperty(ID: ${propertyIdToPurchase}, Buyer: ${buyerAddress}) with value: ${purchasePriceWei.toString()} Wei`);
-            setPurchaseStatus('Awaiting confirmation in MetaMask...');
-
-            const tx = await contract.PurchaseProperty(
-                propertyIdToPurchase,
-                buyerAddress, // Pass buyer's address as the 'buyer' parameter
-                { value: purchasePriceWei }
-             );
-
+            const propertyIdToPurchase = activeThread.property_id;
+            const purchasePriceWei = ethers.utils.parseEther(offerMessage.price.toString());
+    
+            // Fetch the buyer's address from the offerMessage
+            const buyerAddress = offerMessage.sender_wallet; // This is the buyer's address
+    
+            console.log(`Calling PurchaseProperty for ID: ${propertyIdToPurchase} with value: ${purchasePriceWei.toString()} Wei and buyer: ${buyerAddress}`);
+    
+            // Send the transaction with the buyer's address
+            const tx = await contract.PurchaseProperty(propertyIdToPurchase, buyerAddress, {
+                value: purchasePriceWei
+            });
+    
             console.log("Purchase transaction sent:", tx.hash);
-            setPurchaseStatus('Transaction sent, confirming on blockchain...');
-
+            setPurchaseStatus('Transaction sent, awaiting confirmation...');
+    
+            // Wait for the transaction to be mined
             const receipt = await tx.wait();
             console.log("Purchase transaction confirmed:", receipt);
-
+    
             if (receipt.status === 0) {
-                 throw new Error("Blockchain transaction failed (reverted). Check transaction on Etherscan.");
+                throw new Error("Blockchain transaction failed (reverted).");
             }
-
+    
             console.log("Property purchase successful on blockchain!");
             setPurchaseStatus('success');
-
-            // --- Step 4: Update Supabase Database (Thread Status) ---
+    
+            // --- Step 2: Update Supabase Database (only after successful TX) ---
             try {
-                console.log(`Updating Supabase: Thread ${activeThread.id} to closed.`);
+                console.log(`Updating Supabase: Message ${offerMessage.id} to accepted, Thread ${activeThread.id} to closed.`);
+                // Update the message status to "accepted"
+                const { error: updateMsgError } = await supabase
+                    .from("messages")
+                    .update({ status: "accepted" })
+                    .eq("id", offerMessage.id);
+    
+                if (updateMsgError) {
+                    // Log error but proceed, blockchain is source of truth for ownership
+                    console.error("Error accepting offer (message update):", updateMsgError);
+                    setError("Purchase successful, but failed to update message status in database.");
+                }
+    
+                // Update the thread status to "closed"
                 const { error: updateThreadError } = await supabase
                     .from("threads")
                     .update({ status: "closed" })
                     .eq("id", activeThread.id);
-
+    
                 if (updateThreadError) {
-                    console.error("Error updating thread status to closed:", updateThreadError);
-                    // Don't overwrite success message, maybe log a warning
-                    setError("Purchase successful, but failed to update conversation status in database. Refresh may be needed.");
+                    // Log error but proceed
+                    console.error("Error accepting offer (thread update):", updateThreadError);
+                    setError("Purchase successful, but failed to close conversation status in database.");
                 }
-
-                 // --- Step 5: Update Local State ---
-                fetchThreads(); // Refetch threads to get the updated status
-                // Refetch messages? Not strictly necessary unless status change needs display
-                // fetchMessages(activeThread.id);
-                 // Update active thread state locally
+    
+                // --- Step 3: Update Local State ---
+                // Refetch threads to get the updated status
+                fetchThreads();
+                // Refetch messages for the current thread to show 'accepted' status
+                fetchMessages(activeThread.id);
+                // Update active thread state locally for immediate feedback
                 setActiveThread(prev => prev ? ({ ...prev, status: "closed" }) : null);
-                // Refetch ALL properties to update owner/listing status globally in the app's cache
-                 fetchAllPropertiesFromContract();
-
-
+                setIsOfferPendingInThread(false); // No longer pending
+                // Optionally, refetch all properties if ownership/listing status needs immediate update in other parts of the app
+                // fetchAllPropertiesFromContract(); // Consider implications of immediate refetch
+    
             } catch (dbError) {
-                 console.error("Error updating database after successful purchase:", dbError);
-                 setError("Blockchain purchase successful, but failed during database update. Property is yours, but conversation status may be outdated.");
-                 // Still refetch data
-                 fetchThreads();
-                 setActiveThread(prev => prev ? ({ ...prev, status: "closed" }) : null); // Optimistic close
+                console.error("Error updating database after successful purchase:", dbError);
+                setError("Blockchain purchase successful, but failed during database update. Please check property status.");
+                // Still refetch data to try and sync state
+                fetchThreads();
+                fetchMessages(activeThread.id);
             }
-
+    
         } catch (err) {
             console.error("Error during purchase process:", err);
-            let userFriendlyError = "An unexpected error occurred during the purchase.";
-             if (err.code === 4001) userFriendlyError = "Transaction rejected in MetaMask.";
-             else if (err.message?.includes("reverted")) userFriendlyError = "Blockchain transaction failed. Possible reasons: Not listed, price mismatch, insufficient funds, owner changed, or other contract issue.";
-             else if (err.message?.includes("insufficient funds")) userFriendlyError = "Insufficient funds for transaction + gas.";
-            else if (err.message) userFriendlyError = `Purchase failed: ${err.message}`;
+            let userFriendlyError = "An unexpected error occurred during the purchase process.";
+            if (err.code === 4001) { // User rejected transaction
+                userFriendlyError = "Transaction rejected in MetaMask.";
+            } else if (err.message?.includes("reverted")) {
+                userFriendlyError = "Blockchain transaction failed. Possible reasons: Property not listed, insufficient funds, or other contract issue.";
+            } else if (err.message?.includes("insufficient funds")) {
+                userFriendlyError = "Insufficient funds for transaction.";
+            } else if (err.message) {
+                // Try to get a more specific message if available
+                userFriendlyError = `Purchase failed: ${err.message.substring(0, 100)}...`; // Truncate long messages
+            }
             setError(userFriendlyError);
             setPurchaseStatus('failed');
         } finally {
             setIsPurchasing(false); // Stop loading indicator
+            // Don't clear purchaseStatus here, let it show success/failure until cleared otherwise
         }
-    }, [activeThread, connectedWallet, isPurchasing, acceptedOfferId, allPropertiesMap, fetchThreads, fetchAllPropertiesFromContract]); // Dependencies
+    }, [activeThread, connectedWallet, isPurchasing, fetchThreads, fetchMessages]); // Dependencies
+
+
+    const handleRejectOffer = useCallback(async function handleRejectOfferHandler(offerId) {
+        if (!activeThread || activeThread.status === "closed" || !connectedWallet) {
+            console.warn("Reject offer aborted. Conditions not met.");
+            return;
+        }
+         // Ensure the current user is the SELLER to reject
+        if (activeThread.seller_wallet?.toLowerCase() !== connectedWallet?.toLowerCase()) {
+            setError("Only the seller can accept or reject offers.");
+            return;
+        }
+
+        clearError();
+        try {
+            console.log(`Rejecting offer ${offerId} in thread ${activeThread.id}`);
+            const { error: updateError } = await supabase
+                .from("messages")
+                .update({ status: "rejected" })
+                .eq("id", offerId)
+                // .neq('sender_wallet', connectedWallet) // Ensure seller doesn't reject own (shouldn't happen)
+                ;
+
+            if (updateError) {
+                console.error("Error rejecting offer:", updateError);
+                setError("Failed to reject offer. Please try again.");
+                return;
+            }
+
+            console.log("Offer rejected successfully.");
+            // Refetch messages to show the 'rejected' status
+            fetchMessages(activeThread.id);
+            setIsOfferPendingInThread(false); // Offer is no longer pending
+
+        } catch (err) {
+            console.error("Unexpected error rejecting offer:", err);
+            setError("An unexpected error occurred while rejecting the offer.");
+        }
+    }, [activeThread, connectedWallet, fetchMessages]); // Dependencies
 
 
     // --- Render Logic ---
 
     return (
-        <div className="flex h-screen bg-gray-100 font-sans">
+        <div className="flex h-screen bg-gray-100 font-sans"> {/* Changed bg */}
 
             {/* Sidebar */}
-            <aside className="w-1/3 max-w-sm border-r border-gray-200 bg-white shadow-sm flex flex-col">
-                 {/* Header + View Toggle */}
+            <aside className="w-1/3 max-w-sm border-r border-gray-200 bg-white shadow-sm flex flex-col"> {/* Adjusted width */}
                 <div className="p-4 border-b border-gray-200">
-                    <h2 className="text-xl font-bold text-gray-800 mb-4">Conversations</h2>
+                    <h2 className="text-xl font-bold text-gray-800 mb-4">Conversations</h2> {/* Adjusted size */}
                     {connectedWallet ? (
-                        <div className="mb-2">
-                            {/* View Toggle Buttons */}
+                        <div className="mb-4">
+                            <label className="block text-gray-600 text-xs font-medium mb-1 uppercase tracking-wider">View as:</label> {/* Adjusted style */}
                             <div className="flex items-center rounded-md border border-gray-300 overflow-hidden">
-                                <button
-                                    className={`flex-1 px-3 py-1.5 text-sm transition-colors duration-150 ${isBuyerView ? 'bg-blue-500 text-white font-semibold' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-                                    onClick={() => { setIsBuyerView(true); setActiveThread(null); }}
-                                >
-                                    Buying
-                                </button>
-                                <button
-                                    className={`flex-1 px-3 py-1.5 text-sm transition-colors duration-150 ${!isBuyerView ? 'bg-blue-500 text-white font-semibold' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-                                    onClick={() => { setIsBuyerView(false); setActiveThread(null); }}
-                                >
-                                    Selling
-                                </button>
+                                 <button
+                                     className={`flex-1 px-3 py-1.5 text-sm transition-colors duration-150 ${isBuyerView ? 'bg-blue-500 text-white font-semibold' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                                     onClick={() => { setIsBuyerView(true); setActiveThread(null); }} // Clear active thread on view switch
+                                 >
+                                     Buyer
+                                 </button>
+                                 <button
+                                     className={`flex-1 px-3 py-1.5 text-sm transition-colors duration-150 ${!isBuyerView ? 'bg-blue-500 text-white font-semibold' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                                     onClick={() => { setIsBuyerView(false); setActiveThread(null); }} // Clear active thread on view switch
+                                 >
+                                     Seller
+                                 </button>
                             </div>
-                            <p className="text-xs text-gray-500 mt-2 truncate">Wallet: {connectedWallet}</p>
                         </div>
                     ) : (
-                         <p className="text-sm text-gray-500">Connect wallet to view conversations.</p>
+                         <p className="text-sm text-gray-500">Connect wallet to see conversations.</p>
                     )}
                 </div>
 
                 {/* Thread List */}
                 <div className="flex-grow overflow-y-auto">
-                     {propertiesLoading && !threads.length && <p className="p-4 text-sm text-gray-500 text-center">Loading properties & conversations...</p>}
-                     {!propertiesLoading && getFilteredThreads().length === 0 && !error && connectedWallet && (
+                     {propertiesLoading && <p className="p-4 text-sm text-gray-500 text-center">Loading properties...</p>}
+                    {!propertiesLoading && getFilteredThreads().length === 0 && !error && connectedWallet && (
                          <p className="p-4 text-sm text-gray-500 text-center">No conversations found for this view.</p>
                     )}
                     {getFilteredThreads().map((thread) => (
                         <div
                             key={thread.id}
-                            className={`flex items-center gap-3 p-3 border-b border-gray-100 cursor-pointer transition-all duration-150 ${determineThreadStyle(thread)} ${isThreadUnread(thread) ? "font-bold" : ""}`}
+                            className={`flex items-center gap-3 p-3 border-b border-gray-100 cursor-pointer transition-all duration-150 ${determineThreadStyle(thread)} ${isThreadUnread(thread) ? "font-semibold" : ""}`}
                             onClick={() => {
-                                if (activeThread?.id !== thread.id) {
-                                     setActiveThread(thread);
-                                }
+                                clearError();
+                                // Mark as read happens in useEffect for activeThread
+                                setActiveThread(thread);
                             }}
                         >
-                             <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ${isThreadUnread(thread) ? 'bg-gradient-to-br from-blue-400 to-indigo-500' : 'bg-gradient-to-br from-gray-200 to-gray-300'}`}>
-                                <span className={`text-lg font-bold ${isThreadUnread(thread) ? 'text-white' : 'text-gray-600'}`}>{getThreadName(thread)?.[0]?.toUpperCase() || '?'}</span>
+                            {/* Placeholder Avatar */}
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-200 to-indigo-300 flex items-center justify-center flex-shrink-0 shadow-sm">
+                                <span className="text-lg font-bold text-indigo-700">{getThreadName(thread)?.[0]?.toUpperCase() || '?'}</span>
                             </div>
+                            {/* Thread Info */}
                             <div className="flex-grow overflow-hidden">
                                 <div className={`text-sm font-medium ${isThreadUnread(thread) ? 'text-gray-900' : 'text-gray-700'} truncate`}>{getThreadName(thread)}</div>
                                 <div className="text-xs text-gray-500 truncate">{propertyNames[thread.id] || 'Loading Property...'}</div>
-                                {thread.status === "closed" && <span className="text-xs text-red-500 font-medium block mt-0.5">Closed</span>}
-                                {/* Optionally indicate accepted offer status here too */}
-                                {/* {thread.status === "offer_accepted" && <span className="text-xs text-green-500 font-medium block mt-0.5">Offer Accepted</span>} */}
+                                {thread.status === "closed" && <span className="text-xs text-red-500 font-medium block">Closed</span>}
                             </div>
+                            {/* Unread Indicator */}
                             {isThreadUnread(thread) && (
-                                <div className="w-2.5 h-2.5 bg-blue-500 rounded-full flex-shrink-0 mr-1 shadow-md animate-pulse"></div>
+                                <div className="w-2.5 h-2.5 bg-blue-500 rounded-full flex-shrink-0 mr-1 shadow-md"></div>
                             )}
                         </div>
                     ))}
@@ -916,53 +884,47 @@ function ChatPage() {
             </aside>
 
             {/* Main Chat Area */}
-            <div className="w-2/3 flex-grow flex flex-col bg-gray-50">
-                 {/* Global Error/Status Display */}
-                 <div className="sticky top-0 z-10 p-2 space-y-2 bg-gray-50"> {/* Make errors sticky */}
-                    {error && (
-                        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 px-4 py-2.5 rounded shadow-md relative animate-shake" role="alert">
-                            <div className="flex justify-between items-center">
-                                <div><strong className="font-bold">Error:</strong><span className="ml-2">{error}</span></div>
-                                <button onClick={clearError} className="ml-4 text-red-500 hover:text-red-700 font-bold text-lg leading-none">×</button>
-                            </div>
+            <div className="w-2/3 flex-grow flex flex-col bg-gray-50"> {/* Adjusted width */}
+                 {/* Global Error/Status Display Area */}
+                 {error && (
+                    <div className="bg-red-100 border-l-4 border-red-500 text-red-700 px-4 py-2.5 m-4 rounded shadow-md relative" role="alert">
+                        <div className="flex justify-between items-center">
+                            <div><strong className="font-bold">Error:</strong><span className="ml-2">{error}</span></div>
+                            <button onClick={clearError} className="ml-4 text-red-500 hover:text-red-700 font-bold text-lg">×</button> {/* Larger close button */}
                         </div>
-                    )}
-                    {/* Detailed Purchase Status */}
-                    {isPurchasing && purchaseStatus && purchaseStatus !== 'success' && purchaseStatus !== 'failed' && (
-                         <div className="bg-blue-100 border-l-4 border-blue-500 text-blue-700 px-4 py-2.5 rounded shadow-md flex items-center" role="status">
-                             <FontAwesomeIcon icon={faSpinner} className="animate-spin mr-3" />
-                             <strong className="font-bold">Processing:</strong><span className="ml-2">{purchaseStatus}...</span>
-                         </div>
-                    )}
-                     {/* Final Purchase Status (non-error) */}
-                    {purchaseStatus === 'success' && !error && (
-                        <div className={`bg-green-100 border-l-4 border-green-500 text-green-700 px-4 py-2.5 rounded shadow-md`} role="status">
-                            <div className="flex justify-between items-center">
-                                <div><strong className="font-bold">Success:</strong><span className="ml-2">Property purchased successfully!</span></div>
-                                <button onClick={() => setPurchaseStatus(null)} className="ml-4 text-inherit hover:opacity-75 font-bold text-lg leading-none">×</button>
-                            </div>
+                    </div>
+                 )}
+                 {purchaseStatus && purchaseStatus !== 'pending' && purchaseStatus !== 'Transaction sent, awaiting confirmation...' && !error && ( // Only show final status if no error displayed
+                    <div className={`px-4 py-2.5 m-4 rounded shadow-md border-l-4 ${purchaseStatus === 'success' ? 'bg-green-100 border-green-500 text-green-700' : 'bg-yellow-100 border-yellow-500 text-yellow-700'}`} role="status">
+                         <div className="flex justify-between items-center">
+                            <div><strong className="font-bold">{purchaseStatus === 'success' ? 'Success:' : 'Info:'}</strong><span className="ml-2">{purchaseStatus === 'success' ? 'Property purchased successfully!' : purchaseStatus}</span></div>
+                            <button onClick={() => setPurchaseStatus(null)} className="ml-4 text-inherit hover:opacity-75 font-bold text-lg">×</button>
                         </div>
-                    )}
-                </div>
+                    </div>
+                 )}
 
 
                 {activeThread ? (
                     <>
                         {/* Chat Header */}
-                        <div className="border-b border-gray-200 p-4 bg-white shadow-sm sticky top-0 z-10"> {/* Make header sticky */}
+                        <div className="border-b border-gray-200 p-4 bg-white shadow-sm">
                             <h2 className="text-lg font-semibold text-gray-900">Chat with {getThreadName(activeThread)}</h2>
                             <p className="text-sm text-gray-600">Property: {propertyNames[activeThread.id] || 'Loading...'}</p>
-                            {activeThread.status === "closed" && !isPurchasing && (
+                             {/* Display explicit purchasing indicator here */}
+                            {isPurchasing && (
+                                <div className="mt-2 flex items-center text-sm text-blue-600 font-medium">
+                                    <FontAwesomeIcon icon={faSpinner} className="animate-spin mr-2" />
+                                    <span>{purchaseStatus || 'Processing Purchase...'}</span>
+                                </div>
+                            )}
+                            {/* Indicate if the conversation is closed */}
+                             {activeThread.status === "closed" && !isPurchasing && (
                                 <div className="mt-1 text-sm font-semibold text-red-600">Conversation Closed</div>
                              )}
-                             {/* Add explicit message if purchase failed but thread not closed yet */}
-                              {purchaseStatus === 'failed' && activeThread.status !== 'closed' && (
-                                <div className="mt-1 text-sm font-semibold text-red-600">Purchase Failed. See error above.</div>
-                              )}
                         </div>
 
                         {/* Messages Area */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth"> {/* Added scroll-smooth */}
                             {messages.map((msg) => (
                                 <div key={msg.id} className={`flex ${msg.sender_wallet?.toLowerCase() === connectedWallet ? 'justify-end' : 'justify-start'}`}>
                                      <div className={`max-w-lg lg:max-w-xl xl:max-w-2xl`} >
@@ -971,12 +933,14 @@ function ChatPage() {
                                             <div className={`relative group px-3.5 py-2 rounded-xl shadow-sm ${msg.sender_wallet?.toLowerCase() === connectedWallet ? "bg-blue-500 text-white rounded-br-none" : "bg-white border border-gray-200 text-gray-800 rounded-bl-none"}`}>
                                                 <p className="text-sm break-words">{msg.message}</p>
                                                 <span className={`text-xs mt-1 pt-1 block text-right opacity-70 ${msg.sender_wallet?.toLowerCase() === connectedWallet ? 'text-blue-100' : 'text-gray-400'}`}>{moment(msg.created_at).fromNow()}</span>
+                                                {/* Optional: Read receipt indicator (simple example) */}
+                                                {/* {msg.sender_wallet?.toLowerCase() === connectedWallet && msg.read && <span className="text-xs absolute bottom-1 right-1 text-blue-200">✓✓</span>} */}
                                             </div>
                                         )}
 
                                         {/* Offer Message */}
                                         {msg.type === "offer" && (
-                                            <div className={`bg-gradient-to-r ${msg.sender_wallet?.toLowerCase() === connectedWallet ? 'from-blue-50 to-blue-100 border-blue-200' : 'from-green-50 to-green-100 border-green-200'} border rounded-lg shadow-md p-4 w-full my-2`}>
+                                            <div className={`bg-gradient-to-r ${msg.sender_wallet?.toLowerCase() === connectedWallet ? 'from-blue-50 to-blue-100 border-blue-200' : 'from-green-50 to-green-100 border-green-200'} border rounded-lg shadow-md p-4 w-full`}>
                                                 <div className="mb-2 flex justify-between items-baseline">
                                                      <span className="text-base font-semibold text-gray-800">
                                                         {msg.sender_wallet?.toLowerCase() === connectedWallet ? 'Offer Sent:' : 'Offer Received:'}
@@ -986,44 +950,40 @@ function ChatPage() {
                                                 {msg.message && ( <p className="text-gray-700 text-sm mb-3 bg-white/50 p-2 rounded italic border-l-2 border-gray-300">"{msg.message}"</p> )}
 
                                                 {/* Offer Status & Actions */}
-                                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-2 pt-2 border-t border-gray-200/50 space-y-2 sm:space-y-0">
+                                                <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-200/50">
                                                     <span className="text-gray-500 text-xs">{moment(msg.created_at).fromNow()}</span>
-
-                                                     {/* SELLER's Accept/Reject Buttons */}
+                                                    {/* Show Accept/Reject only if pending, thread open, and current user is the SELLER */}
                                                     {msg.status === "pending" && activeThread.status !== "closed" && activeThread.seller_wallet?.toLowerCase() === connectedWallet && !isPurchasing && (
-                                                        <div className="flex gap-2 self-end sm:self-center">
-                                                            <button onClick={() => handleAcceptOffer(msg)} className="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded text-xs transition-colors duration-200 shadow-sm disabled:opacity-50" disabled={isPurchasing}>
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={() => handleAcceptOffer(msg)}
+                                                                className="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-opacity-50 text-xs transition-colors duration-200 shadow-sm disabled:opacity-50"
+                                                                disabled={isPurchasing}
+                                                            >
                                                                 <FontAwesomeIcon icon={faCheck} className="mr-1" /> Accept
                                                             </button>
-                                                            <button onClick={() => handleRejectOffer(msg.id)} className="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-3 rounded text-xs transition-colors duration-200 shadow-sm disabled:opacity-50" disabled={isPurchasing}>
+                                                            <button
+                                                                onClick={() => handleRejectOffer(msg.id)}
+                                                                className="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-3 rounded focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-opacity-50 text-xs transition-colors duration-200 shadow-sm disabled:opacity-50"
+                                                                disabled={isPurchasing}
+                                                            >
                                                                 <FontAwesomeIcon icon={faTimes} className="mr-1" /> Reject
                                                             </button>
                                                         </div>
                                                     )}
-
-                                                     {/* BUYER's Purchase Button */}
-                                                    {msg.status === "accepted" && activeThread.status !== "closed" && activeThread.buyer_wallet?.toLowerCase() === connectedWallet && !isPurchasing && (
-                                                         <div className="flex flex-col items-end sm:items-center w-full sm:w-auto">
-                                                            <button onClick={handleProceedToPurchase} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1.5 px-4 rounded text-sm transition-colors duration-200 shadow-sm disabled:opacity-50 flex items-center gap-2" disabled={isPurchasing}>
-                                                                <FontAwesomeIcon icon={faShoppingCart} /> Proceed to Purchase
-                                                            </button>
-                                                             {/* Important Note about Price */}
-                                                             <p className="text-xs text-orange-600 mt-1 text-right sm:text-center font-medium">Note: Purchase will use the original listing price ({allPropertiesMap[activeThread.property_id]?.price || '...'} ETH).</p>
-                                                        </div>
-                                                    )}
-
-                                                    {/* Status Badge */}
-                                                     <div className={`text-xs font-semibold py-0.5 px-2 rounded-full self-start sm:self-center ${
+                                                    {/* Show Status Badge */}
+                                                    {msg.status !== "pending" && (
+                                                        <span className={`text-xs font-semibold py-0.5 px-2 rounded-full ${
                                                             msg.status === "accepted" ? "bg-green-100 text-green-700 ring-1 ring-green-200" :
                                                             msg.status === "rejected" ? "bg-red-100 text-red-700 ring-1 ring-red-200" :
-                                                            msg.status === "pending" ? "bg-yellow-100 text-yellow-700 ring-1 ring-yellow-200" : ""
+                                                            "bg-yellow-100 text-yellow-700 ring-1 ring-yellow-200" // Should ideally not show pending here
                                                         }`}>
                                                             {msg.status.charAt(0).toUpperCase() + msg.status.slice(1)}
-                                                    </div>
-
-                                                     {/* Indicate if action is blocked by purchase process */}
-                                                     {(msg.status === "pending" || msg.status === "accepted") && isPurchasing && (
-                                                        <span className="text-xs text-blue-500 font-medium self-start sm:self-center">Purchase in progress...</span>
+                                                        </span>
+                                                    )}
+                                                    {/* Indicate if this offer is pending but another action is in progress */}
+                                                     {msg.status === "pending" && activeThread.seller_wallet?.toLowerCase() === connectedWallet && isPurchasing && (
+                                                        <span className="text-xs text-blue-500 font-medium">Purchase in progress...</span>
                                                      )}
                                                 </div>
                                             </div>
@@ -1031,33 +991,57 @@ function ChatPage() {
                                     </div>
                                 </div>
                             ))}
-                             {/* Scroll anchor */}
-                            <div ref={messagesEndRef} />
+                             {/* Scroll anchor for new messages (optional) */}
+                            {/* <div ref={messagesEndRef} /> */}
                         </div>
 
                         {/* Input Area */}
-                        <div className="p-4 bg-white border-t border-gray-200 shadow-sm sticky bottom-0"> {/* Make input sticky */}
-                            {/* Offer Form */}
+                        <div className="p-4 bg-white border-t border-gray-200 shadow-sm">
+                            {/* Offer Form (conditionally rendered) */}
                              {isOfferFormVisible && activeThread.buyer_wallet?.toLowerCase() === connectedWallet && activeThread.status !== "closed" && (
                                 <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200 shadow-inner animate-fadeIn" style={{ animationDuration: "0.3s" }}>
-                                    {/* ... Offer form inputs (price, message) ... */}
-                                     <h3 className="text-md font-semibold text-gray-800 mb-3">Make an Offer</h3>
-                                     {/* Price Input */}
-                                     <div className="mb-3">
+                                    <h3 className="text-md font-semibold text-gray-800 mb-3">Make an Offer</h3>
+                                    <div className="mb-3">
                                         <label htmlFor="offerPrice" className="block text-gray-700 text-sm font-bold mb-1">Offer Price (ETH): <span className="text-red-500">*</span></label>
-                                        <input type="number" id="offerPrice" value={offerPrice} onChange={(e) => setOfferPrice(e.target.value)} placeholder="e.g., 1.5" step="any" min="0.000001" className="input-style" required />
+                                        <input
+                                            type="number"
+                                            id="offerPrice"
+                                            value={offerPrice}
+                                            onChange={(e) => setOfferPrice(e.target.value)}
+                                            placeholder="e.g., 1.5"
+                                            step="any"
+                                            min="0.000001" // Minimum value slightly above 0
+                                            className="shadow-sm appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                            required
+                                        />
                                     </div>
-                                     {/* Message Input */}
                                     <div className="mb-3">
                                         <label htmlFor="offerMessage" className="block text-gray-700 text-sm font-bold mb-1">Message (Optional):</label>
-                                        <textarea id="offerMessage" value={offerMessage} onChange={(e) => setOfferMessage(e.target.value)} placeholder="Add an optional message..." rows={2} className="input-style"></textarea>
+                                        <textarea
+                                            id="offerMessage"
+                                            value={offerMessage}
+                                            onChange={(e) => setOfferMessage(e.target.value)}
+                                            placeholder="Add an optional message to your offer..."
+                                            rows={2}
+                                            className="shadow-sm appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                        ></textarea>
                                     </div>
-                                     {/* Buttons */}
-                                    <div className="flex gap-3 items-center">
-                                        <button onClick={handleMakeOffer} className="btn-primary bg-green-500 hover:bg-green-600 disabled:bg-green-300" disabled={!offerPrice || isNaN(parseFloat(offerPrice)) || parseFloat(offerPrice) <= 0 || isOfferPendingInThread || isPurchasing}> Submit Offer </button>
-                                        <button onClick={() => setIsOfferFormVisible(false)} className="btn-secondary bg-gray-400 hover:bg-gray-500"> Cancel </button>
-                                         {isOfferPendingInThread && <p className="text-sm text-yellow-600 font-medium">An offer is currently pending.</p>}
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={handleMakeOffer}
+                                            className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50 disabled:cursor-not-allowed"
+                                            disabled={!offerPrice || isNaN(parseFloat(offerPrice)) || parseFloat(offerPrice) <= 0 || isOfferPendingInThread}
+                                        >
+                                            Submit Offer
+                                        </button>
+                                        <button
+                                            onClick={() => setIsOfferFormVisible(false)}
+                                            className="bg-gray-400 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                        >
+                                            Cancel
+                                        </button>
                                     </div>
+                                     {isOfferPendingInThread && <p className="text-sm text-yellow-600 mt-2">An offer is currently pending resolution.</p>}
                                 </div>
                             )}
 
@@ -1067,16 +1051,30 @@ function ChatPage() {
                                     type="text"
                                     value={newMessage}
                                     onChange={(e) => setNewMessage(e.target.value)}
-                                    placeholder={activeThread.status === "closed" ? "Conversation closed" : (isPurchasing ? "Purchase in progress..." : "Type a message...")}
+                                    placeholder={activeThread.status === "closed" ? "Conversation closed" : "Type a message..."}
                                     className="flex-1 p-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-shadow duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                                    onKeyDown={(e) => { if (e.key === 'Enter' && newMessage.trim() && activeThread.status !== "closed" && !isPurchasing) { handleSendMessage(); } }}
+                                    onKeyDown={(e) => { if (e.key === 'Enter' && newMessage.trim() && activeThread.status !== "closed") { handleSendMessage(); } }}
                                     disabled={activeThread.status === "closed" || isPurchasing}
                                 />
                                 {/* Send Button */}
-                                <button onClick={handleSendMessage} className="btn-icon bg-blue-500 hover:bg-blue-600 disabled:opacity-50" disabled={activeThread.status === "closed" || !newMessage.trim() || isPurchasing} title="Send Message"> <FontAwesomeIcon icon={faPaperPlane} /> </button>
-                                {/* Make Offer Button */}
-                                {activeThread.buyer_wallet?.toLowerCase() === connectedWallet && activeThread.status !== "closed" && (
-                                    <button onClick={() => setIsOfferFormVisible(!isOfferFormVisible)} className="btn-icon bg-green-500 hover:bg-green-600 disabled:opacity-50" disabled={isOfferPendingInThread || isOfferFormVisible || isPurchasing || !!acceptedOfferId} title={isOfferFormVisible ? "Close Offer Form" : (isOfferPendingInThread ? "Offer Pending" : (acceptedOfferId ? "Offer Accepted" : "Make Offer"))} > <FontAwesomeIcon icon={faGift} /> </button>
+                                <button
+                                    onClick={handleSendMessage}
+                                    className={`bg-blue-500 hover:bg-blue-600 text-white font-bold p-3 rounded-full focus:outline-none focus:shadow-outline transition-all duration-200 flex items-center justify-center aspect-square disabled:opacity-50 disabled:cursor-not-allowed`}
+                                    disabled={activeThread.status === "closed" || !newMessage.trim() || isPurchasing}
+                                    title="Send Message"
+                                >
+                                    <FontAwesomeIcon icon={faPaperPlane} />
+                                </button>
+                                {/* Make Offer Button (only visible to buyer, if no offer pending/form open) */}
+                                {activeThread.buyer_wallet?.toLowerCase() === connectedWallet && (
+                                    <button
+                                        onClick={() => setIsOfferFormVisible(!isOfferFormVisible)}
+                                        className={`bg-green-500 hover:bg-green-600 text-white font-bold p-3 rounded-full focus:outline-none focus:shadow-outline transition-all duration-200 flex items-center justify-center aspect-square disabled:opacity-50 disabled:cursor-not-allowed`}
+                                        disabled={activeThread.status === "closed" || isOfferPendingInThread || isOfferFormVisible || isPurchasing}
+                                        title={isOfferFormVisible ? "Close Offer Form" : (isOfferPendingInThread ? "Offer Pending" : "Make Offer")}
+                                    >
+                                        <FontAwesomeIcon icon={faGift} />
+                                    </button>
                                 )}
                             </div>
                         </div>
@@ -1084,82 +1082,31 @@ function ChatPage() {
                 ) : (
                      // Placeholder when no chat is active
                     <div className="flex-1 flex flex-col items-center justify-center p-4 text-center bg-gray-50">
-                         {/* ... Placeholder content (same as before - connect wallet, loading, select conversation) ... */}
                          {!connectedWallet ? (
                             <>
-                                 {/* Connect Wallet Prompt */}
-                                <svg className="w-16 h-16 text-gray-400 mb-4" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 11c-1.657 0-3-1.343-3-3s1.343-3 3-3 3 1.343 3 3-1.343 3-3 3zm0 2c2.761 0 5 1.194 5 2.667v1.333H7v-1.333C7 14.194 9.239 13 12 13z"></path><path d="M20.99 10.5l-1.414 1.414a.997.997 0 01-1.414 0l-1.414-1.414a5.985 5.985 0 00-8.484 0L6.858 11.914a.997.997 0 01-1.414 0l-1.414-1.414a7.963 7.963 0 0111.313 0l1.414 1.414a.997.997 0 010 1.414l-1.414 1.414a7.963 7.963 0 01-11.313 0L3.01 13.5"></path></svg>
-                                <p className="text-lg text-gray-600 font-medium">Please connect your wallet</p>
-                                <p className="text-sm text-gray-500 mt-1">Use MetaMask or another compatible wallet to view conversations.</p>
-                                <button onClick={connectWallet} className="mt-4 btn-primary text-sm px-5"> Connect Wallet </button>
+                                 <svg className="w-16 h-16 text-gray-400 mb-4" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 11c-1.657 0-3-1.343-3-3s1.343-3 3-3 3 1.343 3 3-1.343 3-3 3zm0 2c2.761 0 5 1.194 5 2.667v1.333H7v-1.333C7 14.194 9.239 13 12 13z"></path><path d="M20.99 10.5l-1.414 1.414a.997.997 0 01-1.414 0l-1.414-1.414a5.985 5.985 0 00-8.484 0L6.858 11.914a.997.997 0 01-1.414 0l-1.414-1.414a7.963 7.963 0 0111.313 0l1.414 1.414a.997.997 0 010 1.414l-1.414 1.414a7.963 7.963 0 01-11.313 0L3.01 13.5"></path></svg>
+                                 <p className="text-lg text-gray-600 font-medium">Please connect your wallet</p>
+                                <p className="text-sm text-gray-500 mt-1">Use MetaMask or another compatible wallet to start chatting.</p>
+                                <button
+                                    onClick={connectWallet}
+                                    className="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-5 rounded-full focus:outline-none focus:shadow-outline transition-colors duration-200 text-sm"
+                                >
+                                    Connect Wallet
+                                </button>
                             </>
                          ) : (propertiesLoading || (threads.length > 0 && Object.keys(propertyNames).length === 0 && !error)) ? (
-                             <> {/* Loading State */}
+                             <>
                                  <FontAwesomeIcon icon={faSpinner} className="animate-spin text-4xl text-blue-500 mb-4" />
                                  <p className="text-gray-500 text-lg">Loading conversations...</p>
                              </>
-                         ) : (getFilteredThreads().length === 0 && !error) ? (
-                             <> {/* No Conversations State */}
-                                <svg className="w-16 h-16 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-                                <p className="text-gray-500 text-lg">You have no conversations in this view yet.</p>
-                                <p className="text-sm text-gray-400 mt-1">Start a chat from a property listing.</p>
-                            </>
+                         ) : (threads.length === 0 && !error) ? (
+                              <p className="text-gray-500 text-lg">You have no conversations yet.</p>
                          ) : (
-                             <> {/* Select Conversation State */}
-                                <svg className="w-16 h-16 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" ><path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-3.04 8.25-6.75 8.25a9.753 9.753 0 01-4.556-1.226L3 21l1.976-5.174A9.753 9.753 0 013 12C3 7.444 6.04 3.75 9.75 3.75S16.5 7.444 16.5 12z" /></svg>
-                                <p className="text-gray-500 text-lg">Select a conversation</p>
-                                <p className="text-sm text-gray-400 mt-1">Choose a chat from the sidebar to view messages.</p>
-                            </>
+                             <p className="text-gray-500 text-lg">Select a conversation from the list to start chatting.</p>
                          )}
                     </div>
                 )}
             </div>
-
-             {/* Add basic CSS for input/buttons if not using Tailwind components/plugins */}
-            <style jsx>{`
-                .input-style {
-                     box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-                     appearance: none;
-                     border-width: 1px;
-                     border-color: #e5e7eb; /* gray-200 */
-                     border-radius: 0.375rem; /* rounded-md */
-                     width: 100%;
-                     padding-top: 0.5rem; padding-bottom: 0.5rem;
-                     padding-left: 0.75rem; padding-right: 0.75rem;
-                     color: #1f2937; /* gray-800 */
-                     line-height: 1.5;
-                }
-                .input-style:focus {
-                    outline: 2px solid transparent;
-                    outline-offset: 2px;
-                     box-shadow: 0 0 0 2px #60a5fa; /* ring-2 ring-blue-400 */
-                     border-color: transparent;
-                }
-                 .btn-primary {
-                    font-weight: 700; padding: 0.5rem 1rem; border-radius: 0.375rem; outline: none; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); transition: background-color 150ms; color: white;
-                 }
-                .btn-primary:focus { box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5); } /* focus:ring-blue-300 focus:ring-opacity-50 */
-                .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-
-                 .btn-secondary {
-                     font-weight: 700; padding: 0.5rem 1rem; border-radius: 0.375rem; outline: none; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); transition: background-color 150ms; color: white;
-                 }
-                .btn-secondary:focus { box-shadow: 0 0 0 3px rgba(156, 163, 175, 0.5); } /* focus:ring-gray-300 focus:ring-opacity-50 */
-                .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
-
-                 .btn-icon {
-                     font-weight: 700; padding: 0.75rem; border-radius: 9999px; /* rounded-full */ outline: none; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); transition: background-color 150ms; color: white; display: flex; align-items: center; justify-content: center; aspect-ratio: 1 / 1;
-                 }
-                .btn-icon:disabled { opacity: 0.5; cursor: not-allowed; }
-
-                 @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-                 .animate-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
-
-                 @keyframes shake { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); } 20%, 40%, 60%, 80% { transform: translateX(5px); } }
-                .animate-shake { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
-
-             `}</style>
-
         </div>
     );
 }

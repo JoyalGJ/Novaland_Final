@@ -23,7 +23,7 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // --- STEP 2: Use the CORRECT Deployed Novaland_F Contract Address ---
 
-const contractAddress = "0x47F4fe72d3d23a2EEa030EB8B2BC17417fb651d4"; // <-- IMPORTANT: Replace this!
+const contractAddress = "0x5CfF31C181B3C5b038F8319d4Af79d2C43F11424"; // <-- IMPORTANT: Replace this!
 
 // Placeholder image
 const DEFAULT_PLACEHOLDER_IMAGE_URL = "https://via.placeholder.com/600x400.png?text=Property";
