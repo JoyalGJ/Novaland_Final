@@ -231,7 +231,6 @@ function Home() {
                     Discover Latest Properties
                 </h1>
 
-                {/* Loading State - Enhanced */}
                 {isLoading && (
                     <div className="text-center text-violet-600 font-semibold text-xl mt-12 flex items-center justify-center space-x-3">
                         <Loader className="animate-spin" size={24}/>

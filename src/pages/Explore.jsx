@@ -270,7 +270,6 @@ function Explore() {
                             })}
                         </div>
 
-                        {/* Pagination */}
                          {totalPages > 1 && (
                              <nav className="flex justify-center items-center mt-8 pt-4 border-t border-gray-200 space-x-3" aria-label="Pagination">
                                 <button className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-md shadow-sm hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 transition-colors" disabled={currentPage === 1} onClick={() => setCurrentPage(p => Math.max(1, p - 1))}>← Prev</button>

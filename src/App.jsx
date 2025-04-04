@@ -24,7 +24,6 @@ import { useWallet } from './pages/WalletContext'; // Verify path
 // import { supabase } from "./../supabase";
 
 function App() {
-    // Use state from WalletContext
     const { address, connectWallet, loading: walletLoading, error: walletError } = useWallet();
     const [isMetaMaskInstalled, setIsMetaMaskInstalled] = useState(true); // Assume installed initially
     // notificationCount state can remain if used

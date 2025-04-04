@@ -291,12 +291,10 @@ function ChatPage() {
     const getFilteredThreads = useCallback(function getFilteredThreadsHandler() {
         return threads.filter(thread => {
             const walletToCheck = isBuyerView ? thread.buyer_wallet : thread.seller_wallet;
-            // Ensure comparison is case-insensitive
             return walletToCheck?.toLowerCase() === connectedWallet?.toLowerCase();
         });
     }, [threads, isBuyerView, connectedWallet]);
 
-    // --- Effects ---
 
     useEffect(() => {
         console.log("Component mounted, attempting wallet connection...");
