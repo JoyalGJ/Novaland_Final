@@ -13,7 +13,6 @@ const contractAddress = "0x5CfF31C181B3C5b038F8319d4Af79d2C43F11424"; // <--- **
 const PINATA_API_KEY = import.meta.env.VITE_PINATA_API_KEY;
 const PINATA_SECRET_API_KEY = import.meta.env.VITE_PINATA_SECRET_API_KEY;
 const PINATA_GATEWAY_URL = "https://gateway.pinata.cloud/ipfs/";
-
 // --- Helper: Upload single file to Pinata (Same as in UpdatePropertyForm) ---
 const uploadFileToPinata = async (file, fileType = 'File') => {
     if (!PINATA_API_KEY || !PINATA_SECRET_API_KEY) {

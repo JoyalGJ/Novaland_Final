@@ -366,7 +366,6 @@ function PropertyInfo() {
 			mapQuery
 		)}`;
 	}
-
 	return (
 		<div className="relative min-h-screen bg-gradient-to-br from-violet-200 to-blue-50 text-gray-900 py-12">
 			<div className="p-4 md:p-8 max-w-7xl mx-auto">

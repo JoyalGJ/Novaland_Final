@@ -295,7 +295,6 @@ function ChatPage() {
         });
     }, [threads, isBuyerView, connectedWallet]);
 
-
     useEffect(() => {
         console.log("Component mounted, attempting wallet connection...");
         connectWallet();

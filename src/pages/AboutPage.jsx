@@ -1,9 +1,7 @@
 import React from "react";
-
 const AboutPage = () => {
     return (
         <div style={styles.pageContainer}>
-            {/* Hero Section */}
             <div style={styles.heroSection}>
                 <h1 style={styles.title}>About NovaLand</h1>
                 <p style={styles.subtitle}>Revolutionizing Real Estate Transactions with Blockchain</p>

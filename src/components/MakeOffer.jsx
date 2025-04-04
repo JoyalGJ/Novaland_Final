@@ -7,7 +7,6 @@ import { ethers } from "ethers";
 // --- STEP 1: Make sure this ABI file is generated from Novaland_F.sol ---
 import contractABI from "./../../contractABI2.json";
 // <-- UPDATE FILENAME IF NEEDED
-
 // --- UI Imports (Assuming these are shadcn/ui or similar) ---
 import { Button } from "./ui/button"; // Assuming Button exists
 import { Card, CardContent } from "./ui/card";

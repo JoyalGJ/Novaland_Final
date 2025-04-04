@@ -2,7 +2,6 @@ import React, { createContext, useState, useEffect, useContext, useCallback } fr
 import { useAddress, useMetamask, useDisconnect } from '@thirdweb-dev/react'; // Import needed hooks
 
 const WalletContext = createContext();
-
 export const useWallet = () => {
   return useContext(WalletContext);
 };

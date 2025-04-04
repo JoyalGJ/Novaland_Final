@@ -1,7 +1,6 @@
 import { Search } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useState } from "react";
-
 function SearchBar(){
     const [searchQuery,setSearchQuery] = useState(""); 
     return(<div className="flex justify-center">

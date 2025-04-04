@@ -125,5 +125,4 @@ function Home2({ connectWithMetamask }) {
         </div>
     );
 }
-
 export default Home2;

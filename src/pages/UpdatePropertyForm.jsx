@@ -5,7 +5,6 @@ import axios from 'axios';
 import { useAddress } from '@thirdweb-dev/react';
 import contractABI from './../../contractABI2.json'; // <--- MAKE SURE this is the ABI for Novaland_F1
 import { FiX, FiInfo } from 'react-icons/fi'; // Icon for removing files and info
-
 // --- REPLACE with your Deployed Novaland_F1 Contract Address ---
 const contractAddress = "0x47F4fe72d3d23a2EEa030EB8B2BC17417fb651d4"; // <--- *** REPLACE THIS ***
 

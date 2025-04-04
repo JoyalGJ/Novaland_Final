@@ -230,7 +230,6 @@ function Home() {
                 <h1 className="font-extrabold text-3xl md:text-4xl text-center text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-violet-600 to-purple-700 mb-10 tracking-tight">
                     Discover Latest Properties
                 </h1>
-
                 {isLoading && (
                     <div className="text-center text-violet-600 font-semibold text-xl mt-12 flex items-center justify-center space-x-3">
                         <Loader className="animate-spin" size={24}/>

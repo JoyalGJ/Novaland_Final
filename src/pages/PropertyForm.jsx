@@ -11,7 +11,6 @@ import contractABI from "./../../contractABI2.json"; // <-- VERIFY/UPDATE PATH &
 
 // --- STEP 2: REPLACE WITH YOUR DEPLOYED CONTRACT ADDRESS ---
 const contractAddress = "0x5CfF31C181B3C5b038F8319d4Af79d2C43F11424"; // <--- *** REPLACE THIS ***
-
 // --- Pinata Configuration (Ensure .env variables are set) ---
 const PINATA_API_KEY = import.meta.env.VITE_PINATA_API_KEY;
 const PINATA_SECRET_API_KEY = import.meta.env.VITE_PINATA_SECRET_API_KEY;

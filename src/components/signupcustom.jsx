@@ -6,7 +6,6 @@ import { ethers } from "ethers";
 import { supabase } from "../../supabase";
 import { useNavigate } from "react-router-dom";
 import MetaMaskLogo from "../assets/metamask.svg"; // Ensure you have this logo
-
 function Signupcustom() {
   const navigate = useNavigate();
   const [isSignup, setIsSignup] = useState(false);

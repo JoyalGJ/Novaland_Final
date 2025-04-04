@@ -20,8 +20,6 @@ import AboutPage from "./pages/AboutPage";
 
 // Context & Services
 import { useWallet } from './pages/WalletContext'; // Verify path
-// Supabase import not strictly needed in App.js if handled elsewhere, but keep if used directly
-// import { supabase } from "./../supabase";
 
 function App() {
     const { address, connectWallet, loading: walletLoading, error: walletError } = useWallet();

@@ -9,7 +9,6 @@ import {
 import {
   Link
 } from "react-router-dom";
-
 function Footer() {
   return (
       <footer className="bg-gray-100 text-gray-700 py-8 px-6">

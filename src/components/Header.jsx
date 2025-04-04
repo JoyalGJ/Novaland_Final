@@ -75,7 +75,6 @@ function Header({
                     </motion.li>
 
                     {/* Categories Dropdown */}
-                    
 
                     <motion.li className="cursor-pointer flex items-center hover:text-purple-500 transition-colors duration-200" whileHover={{
                         scale: 1.1
