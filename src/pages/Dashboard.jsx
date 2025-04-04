@@ -12,9 +12,6 @@ import { Link, useNavigate } from "react-router-dom";
 // --- STEP 2: Update Contract Address with your deployed Novaland_F1 address ---
 const contractAddress = "0x5CfF31C181B3C5b038F8319d4Af79d2C43F11424"; // <--- *** REPLACE THIS ***
 
-// Placeholder image for profile
-const DEFAULT_PROFILE_IMAGE = "https://cdn1.vectorstock.com/i/1000x1000/46/55/person-gray-photo-placeholder-woman-vector-22964655.jpg";
-
 // Global error message setter
 let setErrorMsgGlobal = () => {};
 
@@ -334,7 +331,6 @@ const Dashboard = () => {
             <main className="flex-1 flex flex-col p-4 md:p-8 overflow-y-auto">
                 {/* Profile Box */}
                 <section className="w-full max-w-6xl mx-auto bg-white rounded-lg p-6 shadow-md mb-8 border border-gray-200 flex flex-col sm:flex-row items-center sm:items-start space-y-4 sm:space-y-0 sm:space-x-6">
-                    <img src={DEFAULT_PROFILE_IMAGE} alt="Profile" className="w-20 h-20 object-cover rounded-full border-2 border-indigo-200 shadow-sm flex-shrink-0" />
                     <div className="text-center sm:text-left flex-grow">
                         <h2 className="text-xl font-semibold text-gray-800">{user?.name ?? "User"}</h2>
                         <p className="text-sm text-gray-500 break-all" title={user?.wallet}>
