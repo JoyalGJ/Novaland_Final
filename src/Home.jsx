@@ -321,18 +321,6 @@ function Home() {
                                 ))}
                             </div>
                         )}
-
-                        {/* Optional: "View All" Button - Themed */}
-                        {/* {properties.length === LATEST_PROPERTIES_COUNT && totalPropertyCount > LATEST_PROPERTIES_COUNT && (
-                             <div className="text-center mt-12">
-                                 <Link
-                                     to="/explore"
-                                     className="inline-flex items-center px-8 py-3 border border-transparent text-base font-medium rounded-full shadow-md text-white bg-gradient-to-r from-violet-600 to-pink-500 hover:from-violet-700 hover:to-pink-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500 transition-all duration-300 hover:shadow-lg"
-                                 >
-                                     View All Properties <ExternalLink className="ml-2 h-5 w-5" />
-                                 </Link>
-                             </div>
-                        )} */}
                     </>
                 )}
             </div>
