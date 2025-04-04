@@ -40,8 +40,6 @@ function App() {
              console.log("MetaMask is installed.");
              setIsMetaMaskInstalled(true);
 
-             // Optional: Listen for account changes to potentially update state if needed
-             // This is often handled within the WalletContext itself, but good to be aware of
              const handleAccountsChanged = (accounts) => {
                 console.log("App.js detected accountsChanged:", accounts);
                 // The WalletContext should handle updating the 'address' state
@@ -90,26 +88,16 @@ function App() {
             </div>
         );
     }
-
-    // WalletContext handles loading/error states internally usually,
-    // but you could add a global loading indicator here if desired:
-    // if (walletLoading) {
-    //    return <div>Loading Wallet...</div>;
-    // }
-
-    // --- RENDER STATE 2 & 3: METAMASK INSTALLED (Router handles connected/disconnected) ---
     return (
         <Router>
             <div className="flex flex-col min-h-screen">
-                {/* Header remains, gets connection status and function from context */}
+                
                 <Header
                     notificationCount={notificationCount}
-                    isConnected={!!address} // Status based on context address
-                    connectWallet={connectWallet} // Pass context connect function
-                    walletAddress={address} // Pass context address
+                    isConnected={!!address} 
+                    connectWallet={connectWallet} 
+                    walletAddress={address} 
                 />
-
-                 {/* Display Wallet Error from Context if any */}
                  {walletError && (
                      <div style={{ color: 'red', background: '#ffebee', padding: '10px', textAlign: 'center', borderBottom: '1px solid #ffcdd2' }}>
                          Wallet Error: {walletError}
@@ -118,9 +106,6 @@ function App() {
 
                 <main className="flex-grow">
                     <Routes>
-                        {/* --- Conditional Root Route --- */}
-                        {/* If connected (address exists), show Home. */}
-                        {/* If not connected, show Home2 and pass the connect function */}
                         <Route
                             path="/"
                             element={
@@ -141,15 +126,7 @@ function App() {
                         <Route path="/chat" element={address ? <ChatPage /> : <Navigate to="/" replace />} />
                         <Route path="/propertyform" element={address ? <PropertyForm /> : <Navigate to="/" replace />} />
                         <Route path="/edit-property/:productId" element={address ? <Editproperty /> : <Navigate to="/" replace />} />
-                        {/* Add PurchasePage route here if needed, also protected */}
-                        {/* <Route path="/purchase/:id" element={address ? <PurchasePage /> : <Navigate to="/" replace />} /> */}
-
-                        {/* --- Public Routes --- */}
-                        {/* These are accessible regardless of connection status */}
                         <Route path="/about" element={<AboutPage />} />
-
-                        {/* --- Catch-all Route --- */}
-                        {/* Redirects any invalid path back to the root */}
                         <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
                 </main>
