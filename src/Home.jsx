@@ -171,7 +171,7 @@ function Home() {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-yellow-100 via-purple-200 to-blue-300 text-gray-800 pb-10">
+        <div className="min-h-screen bg-gradient-to-br from-white-100 via-purple-200 to-blue-300 text-gray-800 pb-10">
              <div className="flex justify-center items-center w-full h-[50vh] md:h-[60vh] px-4 py-6">
                  <img
                      src={banner}
