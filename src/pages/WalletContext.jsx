@@ -1,7 +1,9 @@
-import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
-import { useAddress, useMetamask, useDisconnect } from '@thirdweb-dev/react'; // Import needed hooks
+import React, { createContext, useState, useEffect, useContext } from 'react';
+import { useAddress, useMetamask, useDisconnect } from '@thirdweb-dev/react';
+import { ethers } from 'ethers';
 
 const WalletContext = createContext();
+
 export const useWallet = () => {
   return useContext(WalletContext);
 };
@@ -10,31 +12,30 @@ export const WalletProvider = ({ children }) => {
   const address = useAddress();
   const connectWithMetamask = useMetamask();
   const disconnect = useDisconnect();
-  const [isConnected, setIsConnected] = useState(false);
-    const [signer, setSigner] = useState(null);
 
-  useEffect(() => {
-    setIsConnected(!!address); // Update isConnected based on address
-  }, [address]);
-
+  const [signer, setSigner] = useState(null);
+  const [walletError, setWalletError] = useState(null);
 
   const connectWallet = async () => {
     try {
       await connectWithMetamask();
+      setWalletError(null); // Clear any previous error
     } catch (error) {
       console.error("Error connecting:", error);
+      setWalletError(error.message || "Failed to connect wallet");
     }
   };
 
   const disconnectWallet = () => {
     disconnect();
+    setSigner(null);
   };
 
   const getSigner = async () => {
     if (window.ethereum) {
       try {
         const provider = new ethers.providers.Web3Provider(window.ethereum);
-        await provider.send("eth_requestAccounts", []); // Ensure accounts are requested
+        await provider.send("eth_requestAccounts", []);
         const newSigner = provider.getSigner();
         setSigner(newSigner);
         return newSigner;
@@ -48,15 +49,14 @@ export const WalletProvider = ({ children }) => {
     }
   };
 
-
   const value = {
     address,
-    isConnected,
+    isConnected: !!address,
     connectWallet,
     disconnectWallet,
     getSigner,
     signer,
-    useWallet,
+    walletError,
   };
 
   return (
